@@ -394,6 +394,7 @@ tr:hover td{background:rgba(255,255,255,0.02);}
     <div class="nav-tab" onclick="showAdminPage('attendance')" id="tab-attendance">Attendance</div>
     <div class="nav-tab" onclick="showAdminPage('bonus')" id="tab-bonus">Bonus & Commission</div>
     <div class="nav-tab" onclick="showAdminPage('reports')" id="tab-reports">Reports</div>
+    <div class="nav-tab" onclick="showAdminPage('settings')" id="tab-settings">⚙ Settings</div>
   </nav>
 
   <div class="admin-main">
@@ -496,10 +497,47 @@ tr:hover td{background:rgba(255,255,255,0.02);}
       <div class="card" id="reportOutput"></div>
     </div>
 
+    <!-- Settings Page -->
+    <div class="page" id="page-settings">
+      <div class="section-header"><h2 class="section-title">Settings & Data Sync</h2></div>
+
+      <!-- Google Sheets Sync -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-eyebrow">☁ Google Sheets Sync</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6;">Connect to your Google Apps Script to save all records permanently in Google Sheets. Employees, time logs, bonuses and payment confirmations will sync automatically.</p>
+        <div class="fg">
+          <label class="fl">Apps Script URL</label>
+          <input class="fi" id="gasUrlInput" placeholder="https://script.google.com/macros/s/…/exec" style="font-size:11px;"/>
+        </div>
+        <div id="gasUrlStatus" style="font-size:11px;margin-bottom:12px;"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="saveGasUrl()">💾 Save URL</button>
+          <button class="btn" onclick="syncFromGAS()" id="syncBtn">🔄 Sync Now</button>
+          <button class="btn" onclick="initTTSheets()" style="font-size:11px;">⚙ Init Sheets (first time)</button>
+          <button class="btn" style="color:var(--red);border-color:var(--red);font-size:11px;" onclick="clearGasUrl()">✕ Disconnect</button>
+        </div>
+      </div>
+
+      <!-- Export / Backup -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-eyebrow">📦 Export & Backup</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6;">Download all records as a JSON backup file. Use this to restore data or migrate to a new device.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="exportBackup()">⬇ Export Backup</button>
+          <label class="btn" style="cursor:pointer;">📂 Restore Backup<input type="file" accept=".json" style="display:none;" onchange="importBackup(this)"></label>
+        </div>
+      </div>
+
+      <!-- Danger Zone -->
+      <div class="card" style="border-color:rgba(192,84,74,0.2);">
+        <div class="card-eyebrow" style="color:var(--red);">⚠ Danger Zone</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Permanently delete all local data. This cannot be undone. Export a backup first.</p>
+        <button class="btn" style="color:var(--red);border-color:var(--red);" onclick="clearAllData()">🗑 Clear All Local Data</button>
+      </div>
+    </div>
+
   </div>
 </div>
-
-<!-- Employee Form Modal -->
 <div class="form-overlay" id="modalAddEmp">
   <div class="form-box">
     <div class="form-title" id="empModalTitle">Add Employee</div>
@@ -739,9 +777,116 @@ const ss = (k,v) => localStorage.setItem(k,v);
 const getEmps   = () => JSON.parse(ls('tc_employees')||'[]');
 const getLogs   = () => JSON.parse(ls('tc_logs')||'[]');
 const getBonuses= () => JSON.parse(ls('tc_bonuses')||'[]');
-const saveEmps  = v => ss('tc_employees',JSON.stringify(v));
-const saveLogs  = v => ss('tc_logs',JSON.stringify(v));
-const saveBonuses=v => ss('tc_bonuses',JSON.stringify(v));
+const saveEmps  = v => { ss('tc_employees',JSON.stringify(v)); _pushEmpsToGAS(v); };
+const saveLogs  = v => { ss('tc_logs',JSON.stringify(v)); _pushLogsToGAS(v); };
+const saveBonuses=v => { ss('tc_bonuses',JSON.stringify(v)); _pushBonusesToGAS(v); };
+
+// ── GAS Sync Layer ──
+const GAS_URL_KEY = 'tc_gas_url';
+let _lastSavedLogIds = new Set((JSON.parse(ls('tc_logs')||'[]')).map(l=>l.id));
+let _lastSavedBonusIds = new Set((JSON.parse(ls('tc_bonuses')||'[]')).map(b=>b.id));
+function getGasUrl(){ return ls(GAS_URL_KEY)||''; }
+function hasGas(){ return !!getGasUrl(); }
+function _pushEmpsToGAS(v){ if(hasGas()) v.forEach(e=>gasCall('saveTTEmployee',e).catch(()=>{})); }
+function _pushLogsToGAS(v){ if(!hasGas()) return; v.forEach(l=>{ if(!_lastSavedLogIds.has(l.id)){ gasCall('saveTTLog',l).catch(()=>{}); _lastSavedLogIds.add(l.id); } }); }
+function _pushBonusesToGAS(v){ if(!hasGas()) return; v.forEach(b=>{ if(!_lastSavedBonusIds.has(b.id)){ gasCall('saveTTBonus',b).catch(()=>{}); _lastSavedBonusIds.add(b.id); } }); }
+
+function gasCall(action, payload){
+  return new Promise(function(resolve,reject){
+    const url = getGasUrl();
+    if(!url){ reject(new Error('No GAS URL')); return; }
+    const obj = { action, payload: payload||{} };
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+    const cb  = '_tt_'+Math.random().toString(36).slice(2);
+    const timer = setTimeout(()=>{ delete window[cb]; try{document.body.removeChild(sc);}catch(e){} reject(new Error('Timeout')); }, 30000);
+    window[cb] = function(data){ clearTimeout(timer); delete window[cb]; try{document.body.removeChild(sc);}catch(e){} resolve(data); };
+    const sc = document.createElement('script');
+    sc.src = url+'?d='+encodeURIComponent(b64)+'&callback='+cb;
+    sc.onerror = ()=>{ clearTimeout(timer); delete window[cb]; reject(new Error('Network')); };
+    document.body.appendChild(sc);
+  });
+}
+
+// Push a single record — fire and forget, localStorage already updated
+function pushTT(action, payload){
+  if(!hasGas()) return;
+  gasCall(action, payload).catch(()=>{});
+}
+
+
+
+// Full sync from GAS on load
+async function syncFromGAS(){
+  if(!hasGas()) return;
+  showSyncBanner('⏳ Syncing records from Google Sheets…');
+  try {
+    const r = await gasCall('getTTData', {});
+    if(!r.ok) throw new Error(r.error||'Failed');
+
+    // Employees — merge (GAS is source of truth)
+    if(Array.isArray(r.employees) && r.employees.length){
+      const emps = r.employees.map(function(e){
+        return {
+          id:         String(e.id||e.ID||''),
+          name:       String(e.name||e.Name||''),
+          role:       String(e.role||e.Role||''),
+          email:      String(e.email||e.Email||''),
+          startDate:  String(e.start_date||e['Start Date']||''),
+          shiftStart: String(e.shift_start||e['Shift Start']||'10:00'),
+          shiftEnd:   String(e.shift_end||e['Shift End']||'18:00'),
+          rate:       parseFloat(e.rate||e.Rate)||0,
+          payPeriod:  String(e.pay_period||e['Pay Period']||'semimonthly'),
+          color:      String(e.color||e.Color||'av1'),
+          active:     String(e.active||e.Active||'true')==='false'?false:true,
+          history:    (function(){ try{ return JSON.parse(String(e.history_json||e['History JSON']||'[]')); }catch(ex){ return []; } })()
+        };
+      }).filter(function(e){ return e.id && e.name; });
+      if(emps.length){ ss("tc_employees",JSON.stringify(emps)); }
+    }
+
+    // Logs — merge
+    if(Array.isArray(r.logs) && r.logs.length){
+      const existing = JSON.parse(ls('tc_logs')||'[]');
+      const existIds = new Set(existing.map(function(l){ return l.id; }));
+      const newLogs = r.logs.map(function(l){
+        return { id:String(l.id||l.ID||''), empId:String(l.emp_id||l['Emp ID']||''), date:String(l.date||l.Date||''), time:String(l.time||l.Time||''), type:String(l.type||l.Type||'in'), manual:String(l.manual||l.Manual||'')===('true'), note:String(l.note||l.Note||'') };
+      }).filter(function(l){ return l.id && l.empId && l.date; });
+      const merged = existing.concat(newLogs.filter(function(l){ return !existIds.has(l.id); }));
+      ss("tc_logs",JSON.stringify(merged));
+      _lastSavedLogIds = new Set(merged.map(function(l){ return l.id; }));
+    }
+
+    // Bonuses — merge
+    if(Array.isArray(r.bonuses) && r.bonuses.length){
+      const existing = JSON.parse(ls('tc_bonuses')||'[]');
+      const existIds = new Set(existing.map(function(b){ return b.id; }));
+      const newBonuses = r.bonuses.map(function(b){
+        return { id:String(b.id||b.ID||''), empId:String(b.emp_id||b['Emp ID']||''), date:String(b.date||b.Date||''), type:String(b.type||b.Type||''), task:String(b.task||b.Task||''), amount:parseFloat(b.amount||b.Amount)||0 };
+      }).filter(function(b){ return b.id && b.empId; });
+      const merged = existing.concat(newBonuses.filter(function(b){ return !existIds.has(b.id); }));
+      ss("tc_bonuses",JSON.stringify(merged));
+      _lastSavedBonusIds = new Set(merged.map(function(b){ return b.id; }));
+    }
+
+    showSyncBanner('✅ Records synced — '+new Date().toLocaleTimeString('en-PH',{timeZone:'Asia/Manila'}), 3000);
+    renderKiosk(); renderDashboard(); renderEmpManage();
+  } catch(e){
+    showSyncBanner('⚠ Sync failed: '+e.message+' — working offline', 4000);
+  }
+}
+
+function showSyncBanner(msg, autohide){
+  let b = document.getElementById('syncBanner');
+  if(!b){
+    b = document.createElement('div');
+    b.id = 'syncBanner';
+    b.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#2f4f4f;color:#f4f7f6;font-family:Poppins,Arial,sans-serif;font-size:12px;padding:8px 20px;text-align:center;z-index:9999;transition:opacity .3s;';
+    document.body.appendChild(b);
+  }
+  b.style.opacity='1'; b.style.display='';
+  b.textContent = msg;
+  if(autohide) setTimeout(()=>{ b.style.opacity='0'; setTimeout(()=>{ b.style.display='none'; },300); }, autohide);
+}
 
 // ══════════════════════════════════
 // PH TIME HELPERS
@@ -905,6 +1050,7 @@ function showAdminPage(p){
   if(p==='bonus') renderBonusPage();
   if(p==='reports'){ populateReportFilter(); renderReport(); }
   if(p==='attendance'){ populateAttFilter(); const t=todayPH(); document.getElementById('att-from').value=t; document.getElementById('att-to').value=t; renderAttendance(); }
+  if(p==='settings'){ updateGasStatus(); }
 }
 
 // ── DASHBOARD ──
@@ -1851,6 +1997,71 @@ function deleteEntry(empId, date){
 }
 
 // ══════════════════════════════════
+// SETTINGS & SYNC
+// ══════════════════════════════════
+function saveGasUrl(){
+  const url = (document.getElementById('gasUrlInput').value||'').trim();
+  if(url && !url.startsWith('https://script.google.com')){
+    showToast('URL must start with https://script.google.com','error'); return;
+  }
+  ss(GAS_URL_KEY, url);
+  updateGasStatus();
+  if(url){ showToast('GAS URL saved — syncing now…','success'); syncFromGAS(); }
+  else showToast('GAS URL cleared','info');
+}
+function clearGasUrl(){ ss(GAS_URL_KEY,''); updateGasStatus(); showToast('Disconnected from Google Sheets','info'); }
+function updateGasStatus(){
+  const el=document.getElementById('gasUrlInput');
+  const st=document.getElementById('gasUrlStatus');
+  if(!el||!st) return;
+  const url=getGasUrl();
+  el.value=url;
+  st.textContent = url ? '✅ Connected — records sync automatically' : '⚠ Not connected — records saved to browser only';
+  st.style.color  = url ? 'var(--teal)' : 'var(--gold)';
+}
+async function initTTSheets(){
+  if(!hasGas()){ showToast('Enter GAS URL first','error'); return; }
+  showToast('Initialising sheets…','info');
+  try{
+    const r = await gasCall('initTTSheets',{});
+    showToast(r.ok ? '✅ Sheets ready: TT_Employees, TT_Logs, TT_Bonuses, TT_Payments' : 'Error: '+(r.error||''),'success');
+  }catch(e){ showToast('Error: '+e.message,'error'); }
+}
+function exportBackup(){
+  const data = { employees:getEmps(), logs:getLogs(), bonuses:getBonuses(), exportedAt:new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'cls-timetracker-backup-'+todayPH()+'.json';
+  a.click();
+  showToast('Backup downloaded','success');
+}
+function importBackup(input){
+  const file = input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const data = JSON.parse(e.target.result);
+      if(!data.employees || !data.logs){ showToast('Invalid backup file','error'); return; }
+      if(!confirm('This will REPLACE all local data with the backup. Continue?')) return;
+      _saveEmps(data.employees);
+      _saveLogs(data.logs);
+      if(data.bonuses) _saveBonuses(data.bonuses);
+      showToast('✅ Backup restored — '+data.employees.length+' employees, '+data.logs.length+' log entries','success');
+      renderDashboard(); renderEmpManage(); renderKiosk();
+    }catch(ex){ showToast('Could not read backup file','error'); }
+  };
+  reader.readAsText(file);
+  input.value='';
+}
+function clearAllData(){
+  if(!confirm('Delete ALL local records? This cannot be undone.')) return;
+  if(!confirm('Are you sure? Export a backup first!')) return;
+  ['tc_employees','tc_logs','tc_bonuses',GAS_URL_KEY].forEach(k=>localStorage.removeItem(k));
+  location.reload();
+}
+
+// ══════════════════════════════════
 // UTILS
 function closeFormModal(id){ document.getElementById(id).classList.remove('open'); }
 function showToast(msg,type='info'){
@@ -1866,6 +2077,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('reportDate').value=todayPH();
   document.getElementById('reportFrom').value=todayPH();
   document.getElementById('reportTo').value=todayPH();
+  // Auto-sync from Google Sheets if URL is configured
+  if(hasGas()) syncFromGAS();
 
   // ── Handle ?confirmPay= URL param (employee clicked confirm button in email) ──
   const params=new URLSearchParams(window.location.search);
