@@ -463,7 +463,6 @@ tr:hover td{background:rgba(255,255,255,0.02);}
             <option value="daily">Daily Summary</option>
             <option value="weekly">Weekly Hours</option>
             <option value="late">Late Arrivals</option>
-            <option value="overtime">Overtime</option>
             <option value="payperiod">Pay Period</option>
           </select>
         </div>
@@ -857,7 +856,7 @@ function confirmClock(){
   const hrs=hoursWorkedDay(pendingEmpId,todayPH());
   document.getElementById('flashIcon').textContent=isin?'👋':'✅';
   document.getElementById('flashName').textContent=emp.name;
-  document.getElementById('flashMsg').textContent=isin?`Clocked out · ${decHrs(hrs)} hrs today`:(isLate(emp,timePH())?`Clocked in at ${timePH().slice(0,5)} · ⚠ Late`:`Clocked in · On time ✓`);
+  document.getElementById('flashMsg').textContent=isin?`Clocked out - ${decHrs(hrs)} hrs today`:(isLate(emp,timePH())?`Clocked in at ${timePH().slice(0,5)} - ⚠ Late`:`Clocked in - On time ✓`);
   const bg=isin?'rgba(37,99,235,0.9)':isLate(emp,timePH())?'rgba(212,146,74,0.9)':'rgba(90,173,126,0.9)';
   flash.style.background=bg; flash.className='show';
   setTimeout(()=>{flash.className='';renderKiosk();},2200);
@@ -932,16 +931,15 @@ function renderDashboard(){
     if(active[e.id]){ const late=isLate(e,active[e.id]); badge=late?'<span class="badge badge-late">Late In</span>':'<span class="badge badge-in">● In</span>'; status=`Since ${active[e.id].slice(0,5)}`; }
     else if(outLog){ badge='<span class="badge badge-out">Out</span>'; status=`Left ${outLog.time.slice(0,5)}`; }
     else{ badge='<span class="badge badge-out">Absent</span>'; status='No record'; }
-    tl+=`<div class="emp-row"><div class="emp-info"><div class="emp-av ${e.color||avFor(i)}">${e.name[0]}</div><div><div class="emp-name">${e.name}</div><div class="emp-sub">${e.role} · ${decHrs(hrs)} hrs</div></div></div><div style="text-align:right">${badge}<div style="font-size:11px;color:var(--muted);margin-top:3px">${status}</div></div></div>`;
+    tl+=`<div class="emp-row"><div class="emp-info"><div class="emp-av ${e.color||avFor(i)}">${e.name[0]}</div><div><div class="emp-name">${e.name}</div><div class="emp-sub">${e.role} - ${decHrs(hrs)} hrs</div></div></div><div style="text-align:right">${badge}<div style="font-size:11px;color:var(--muted);margin-top:3px">${status}</div></div></div>`;
   });
   document.getElementById('todayList').innerHTML=tl||'<div class="empty-state">No employees.</div>';
 
   let al='';
   emps.forEach(e=>{
     const il=logs.find(l=>l.empId===e.id&&l.type==='in');
-    if(il&&isLate(e,il.time)){ const m=Math.round(timeDiff(e.shiftStart+':00',il.time)*60); al+=`<div class="alert-item"><div class="alert-icon">🕐</div><div><div style="font-size:13px"><strong>${e.name}</strong> arrived ${m} min late</div><div style="font-size:11px;color:var(--muted)">Expected ${e.shiftStart} · Arrived ${il.time.slice(0,5)}</div></div></div>`; }
+    if(il&&isLate(e,il.time)){ const m=Math.round(timeDiff(e.shiftStart+':00',il.time)*60); al+=`<div class="alert-item"><div class="alert-icon">🕐</div><div><div style="font-size:13px"><strong>${e.name}</strong> arrived ${m} min late</div><div style="font-size:11px;color:var(--muted)">Expected ${e.shiftStart} - Arrived ${il.time.slice(0,5)}</div></div></div>`; }
     const hrs=hoursWorkedDay(e.id,today);
-    if(hrs>stdHrs(e)&&hrs>0){ const ot=hrs-stdHrs(e); al+=`<div class="alert-item"><div class="alert-icon">⏰</div><div><div style="font-size:13px"><strong>${e.name}</strong> in overtime</div><div style="font-size:11px;color:var(--muted)">${decHrs(ot)} hrs over standard</div></div></div>`; }
   });
   document.getElementById('alertsList').innerHTML=al||'<div class="empty-state">No alerts today ✓</div>';
 }
@@ -952,11 +950,11 @@ function renderEmpManage(){
   const emps=getEmps();
   let h='';
   emps.forEach((e,i)=>{
-    const since=e.startDate?new Date(e.startDate).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'}):'—';
+    const since=e.startDate?new Date(e.startDate).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'}):'-';
     h+=`<div class="emp-row">
       <div class="emp-info"><div class="emp-av ${e.color||avFor(i)}">${e.name[0]}</div>
       <div><div class="emp-name">${e.name}</div>
-      <div class="emp-sub">${e.role} · ₱${e.rate}/hr · ${e.shiftStart}–${e.shiftEnd} · Since ${since}</div>
+      <div class="emp-sub">${e.role} - ₱${e.rate}/hr - ${e.shiftStart}–${e.shiftEnd} - Since ${since}</div>
       <div class="emp-sub">${e.email||''}</div></div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
         <button class="btn" style="font-size:11px" onclick="openEmpDetail('${e.id}')">History</button>
@@ -1020,7 +1018,7 @@ function openEmpDetail(id){
   detailEmpId=id;
   const e=getEmps().find(x=>x.id===id); if(!e)return;
   document.getElementById('detailEmpName').textContent=e.name;
-  document.getElementById('detailEmpMeta').textContent=`${e.role} · Joined ${e.startDate||'—'} · ${e.email||'no email'}`;
+  document.getElementById('detailEmpMeta').textContent=`${e.role} - Joined ${e.startDate||'-'} - ${e.email||'no email'}`;
   document.getElementById('histDate').value=todayPH();
   document.getElementById('histNote').value='';
   renderDetailHistory(e);
@@ -1082,15 +1080,15 @@ function renderBonusPage(){
   const emps=getEmps(); const empMap={}; emps.forEach(e=>empMap[e.id]=e);
   // recent
   const recent=bonuses.slice(0,6);
-  let rh=recent.map(b=>{const e=empMap[b.empId]||{}; return `<div class="bonus-item"><div><div class="emp-name" style="font-size:13px">${e.name||'—'}</div><div class="emp-sub">${b.task}</div><div class="emp-sub">${b.date}</div></div><div style="text-align:right"><span class="bonus-tag">${b.type}</span><div style="font-size:15px;font-weight:600;color:var(--gold);margin-top:4px;font-family:'Poppins',Arial,monospace;letter-spacing:2px">₱${b.amount.toFixed(2)}</div></div></div>`;}).join('');
+  let rh=recent.map(b=>{const e=empMap[b.empId]||{}; return `<div class="bonus-item"><div><div class="emp-name" style="font-size:13px">${e.name||'-'}</div><div class="emp-sub">${b.task}</div><div class="emp-sub">${b.date}</div></div><div style="text-align:right"><span class="bonus-tag">${b.type}</span><div style="font-size:15px;font-weight:600;color:var(--gold);margin-top:4px;font-family:'Poppins',Arial,monospace;letter-spacing:2px">₱${b.amount.toFixed(2)}</div></div></div>`;}).join('');
   document.getElementById('bonusRecentList').innerHTML=rh||'<div class="empty-state">No bonuses yet.</div>';
   // summary
   const sumMap={};
   bonuses.forEach(b=>{ if(!sumMap[b.empId])sumMap[b.empId]={total:0,count:0}; sumMap[b.empId].total+=b.amount; sumMap[b.empId].count++; });
-  let sh=Object.entries(sumMap).map(([id,v])=>{ const e=empMap[id]||{}; return `<div class="emp-row"><div class="emp-info"><div class="emp-av ${e.color||'av1'}">${(e.name||'?')[0]}</div><div><div class="emp-name">${e.name||'—'}</div><div class="emp-sub">${v.count} award${v.count!==1?'s':''}</div></div></div><div style="font-family:'Poppins',Arial,monospace;letter-spacing:2px;font-size:15px;color:var(--gold)">₱${v.total.toFixed(2)}</div></div>`; }).join('');
+  let sh=Object.entries(sumMap).map(([id,v])=>{ const e=empMap[id]||{}; return `<div class="emp-row"><div class="emp-info"><div class="emp-av ${e.color||'av1'}">${(e.name||'?')[0]}</div><div><div class="emp-name">${e.name||'-'}</div><div class="emp-sub">${v.count} award${v.count!==1?'s':''}</div></div></div><div style="font-family:'Poppins',Arial,monospace;letter-spacing:2px;font-size:15px;color:var(--gold)">₱${v.total.toFixed(2)}</div></div>`; }).join('');
   document.getElementById('bonusSummary').innerHTML=sh||'<div class="empty-state">No data.</div>';
   // full
-  let fh=bonuses.map(b=>{ const e=empMap[b.empId]||{}; return `<div class="bonus-item"><div><div class="emp-name" style="font-size:13px">${e.name||'—'} <span class="bonus-tag" style="margin-left:6px">${b.type}</span></div><div class="emp-sub">${b.task}${b.note?' · '+b.note:''}</div><div class="emp-sub">${b.date}</div></div><div style="font-family:'Poppins',Arial,monospace;letter-spacing:2px;font-size:15px;color:var(--gold);white-space:nowrap">₱${b.amount.toFixed(2)} <button class="btn btn-danger" style="font-size:10px;padding:3px 8px;margin-left:8px" onclick="deleteBonus('${b.id}')">✕</button></div></div>`; }).join('');
+  let fh=bonuses.map(b=>{ const e=empMap[b.empId]||{}; return `<div class="bonus-item"><div><div class="emp-name" style="font-size:13px">${e.name||'-'} <span class="bonus-tag" style="margin-left:6px">${b.type}</span></div><div class="emp-sub">${b.task}${b.note?' - '+b.note:''}</div><div class="emp-sub">${b.date}</div></div><div style="font-family:'Poppins',Arial,monospace;letter-spacing:2px;font-size:15px;color:var(--gold);white-space:nowrap">₱${b.amount.toFixed(2)} <button class="btn btn-danger" style="font-size:10px;padding:3px 8px;margin-left:8px" onclick="deleteBonus('${b.id}')">✕</button></div></div>`; }).join('');
   document.getElementById('bonusFullList').innerHTML=fh||'<div class="empty-state">No bonus records.</div>';
 }
 function deleteBonus(id){
@@ -1132,7 +1130,7 @@ function buildDailySummary(dateStr,empId){
     const outL=[...el].reverse().find(l=>l.type==='out');
     let h=0,it=null;
     el.forEach(l=>{if(l.type==='in')it=l.time;if(l.type==='out'&&it){h+=timeDiff(it,l.time);it=null;}});
-    return {name:e.name,role:e.role,in:inL?inL.time.slice(0,5):'—',out:outL?outL.time.slice(0,5):'—',hours:h,late:inL&&isLate(e,inL.time),ot:h>stdHrs(e)&&h>0,std:stdHrs(e)};
+    return {name:e.name,role:e.role,in:inL?inL.time.slice(0,5):'-',out:outL?outL.time.slice(0,5):'-',hours:h,late:inL&&isLate(e,inL.time)};
   });
 }
 
@@ -1143,10 +1141,10 @@ function renderReport(){
   const el=document.getElementById('reportOutput');
 
   if(type==='daily'){
-    let h=`<div class="card-eyebrow">Daily Summary — ${single}</div><table><thead><tr><th>Employee</th><th>Clock In</th><th>Clock Out</th><th>Hours (dec)</th><th>Status</th></tr></thead><tbody>`;
+    let h=`<div class="card-eyebrow">Daily Summary - ${single}</div><table><thead><tr><th>Employee</th><th>Clock In</th><th>Clock Out</th><th>Hours (dec)</th><th>Status</th></tr></thead><tbody>`;
     buildDailySummary(single,empId).forEach(r=>{
-      const st=r.in==='—'?`<span style="color:var(--muted)">Absent</span>`:(r.late?`<span style="color:var(--amber)">Late</span>`:`<span style="color:var(--green)">On Time</span>`);
-      h+=`<tr><td>${r.name}<br><span style="font-size:11px;color:var(--muted)">${r.role}</span></td><td class="mono">${r.in}</td><td class="mono">${r.out}</td><td class="mono">${decHrs(r.hours)}${r.ot?` <span style="color:var(--amber)">+OT</span>`:''}</td><td>${st}</td></tr>`;
+      const st=r.in==='-'?`<span style="color:var(--muted)">Absent</span>`:(r.late?`<span style="color:var(--amber)">Late</span>`:`<span style="color:var(--green)">On Time</span>`);
+      h+=`<tr><td>${r.name}<br><span style="font-size:11px;color:var(--muted)">${r.role}</span></td><td class="mono">${r.in}</td><td class="mono">${r.out}</td><td class="mono">${decHrs(r.hours)}</td><td>${st}</td></tr>`;
     });
     el.innerHTML=h+'</tbody></table>';
   }
@@ -1156,12 +1154,12 @@ function renderReport(){
     const sun=new Date(mon); sun.setDate(mon.getDate()+6);
     const s=mon.toISOString().split('T')[0],e2=sun.toISOString().split('T')[0];
     const emps=getEmps().filter(e=>empId==='all'||e.id===empId);
-    let h=`<div class="card-eyebrow">Weekly Hours — ${s} to ${e2}</div><table><thead><tr><th>Employee</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th><th>Total</th></tr></thead><tbody>`;
+    let h=`<div class="card-eyebrow">Weekly Hours - ${s} to ${e2}</div><table><thead><tr><th>Employee</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th><th>Total</th></tr></thead><tbody>`;
     emps.forEach(e=>{
       let tot=0;
       const days=Array.from({length:7},(_,i)=>{ const dd=new Date(mon);dd.setDate(mon.getDate()+i);const ds=dd.toISOString().split('T')[0]; const hh=hoursWorkedDay(e.id,ds); tot+=hh; return hh; });
       h+=`<tr><td>${e.name}<br><span style="font-size:11px;color:var(--muted)">${e.role}</span></td>`;
-      days.forEach(hh=>h+=`<td class="mono">${hh>0?decHrs(hh):'—'}</td>`);
+      days.forEach(hh=>h+=`<td class="mono">${hh>0?decHrs(hh):'-'}</td>`);
       h+=`<td class="mono" style="font-weight:600;color:var(--gold)">${decHrs(tot)}</td></tr>`;
     });
     el.innerHTML=h+'</tbody></table>';
@@ -1177,29 +1175,83 @@ function renderReport(){
     rows.forEach(r=>h+=`<tr><td>${r.name}<br><span style="font-size:11px;color:var(--muted)">${r.role}</span></td><td class="mono">${r.date}</td><td class="mono">${r.exp}</td><td class="mono" style="color:var(--amber)">${r.act}</td><td class="mono" style="color:var(--amber)">${r.m} min</td></tr>`);
     el.innerHTML=h+'</tbody></table>';
   }
-  else if(type==='overtime'){
-    const emps=getEmps().filter(e=>empId==='all'||e.id===empId);
-    const logs=getLogs();
-    const dates=[...new Set(logs.map(l=>l.date))].sort().reverse().slice(0,30);
-    let rows=[];
-    dates.forEach(dd=>{ emps.forEach(e=>{ const hh=hoursWorkedDay(e.id,dd); const std=stdHrs(e); if(hh>std&&hh>0) rows.push({name:e.name,date:dd,total:hh,std,ot:hh-std,pay:(hh-std)*e.rate*1.25}); }); });
-    let h=`<div class="card-eyebrow">Overtime Records</div><table><thead><tr><th>Employee</th><th>Date</th><th>Total (dec)</th><th>Standard</th><th>OT Hours</th><th>OT Pay (125%)</th></tr></thead><tbody>`;
-    if(!rows.length) h+=`<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px">No overtime recorded.</td></tr>`;
-    rows.forEach(r=>h+=`<tr><td>${r.name}</td><td class="mono">${r.date}</td><td class="mono">${decHrs(r.total)}</td><td class="mono">${decHrs(r.std)}</td><td class="mono" style="color:var(--amber)">${decHrs(r.ot)}</td><td class="mono" style="color:var(--gold)">₱${r.pay.toFixed(2)}</td></tr>`);
-    el.innerHTML=h+'</tbody></table>';
-  }
   else if(type==='payperiod'){
     const emps=getEmps().filter(e=>empId==='all'||e.id===empId);
     const logs=getLogs(); const bonuses=getBonuses();
-    let h=`<div class="card-eyebrow">Pay Period — ${from} to ${to}</div><table><thead><tr><th>Employee</th><th>Days</th><th>Total Hrs</th><th>Regular Pay</th><th>OT Pay</th><th>Bonus / Commission</th><th>Gross Pay</th></tr></thead><tbody>`;
+    let h='';
     emps.forEach(e=>{
-      let days=0,tot=0,reg=0,ot=0;
-      const dates2=[...new Set(logs.filter(l=>l.empId===e.id&&l.date>=from&&l.date<=to).map(l=>l.date))];
-      dates2.forEach(dd=>{ const hh=hoursWorkedDay(e.id,dd); if(hh>0)days++; tot+=hh; const std=stdHrs(e); reg+=Math.min(hh,std)*e.rate; ot+=Math.max(0,hh-std)*e.rate*1.25; });
+      let days=0,tot=0,reg=0;
+      const dates2=[...new Set(logs.filter(l=>l.empId===e.id&&l.date>=from&&l.date<=to).map(l=>l.date))].sort();
+      dates2.forEach(dd=>{ const hh=hoursWorkedDay(e.id,dd); if(hh>0)days++; tot+=hh; reg+=hh*e.rate; });
       const bonusTotal=bonuses.filter(b=>b.empId===e.id&&b.date>=from&&b.date<=to).reduce((a,b)=>a+b.amount,0);
-      h+=`<tr><td>${e.name}<br><span style="font-size:11px;color:var(--muted)">${e.role}</span></td><td class="mono">${days}</td><td class="mono">${decHrs(tot)}</td><td class="mono">₱${reg.toFixed(2)}</td><td class="mono" style="color:var(--amber)">₱${ot.toFixed(2)}</td><td class="mono" style="color:var(--gold)">₱${bonusTotal.toFixed(2)}</td><td class="mono" style="color:var(--green);font-weight:600">₱${(reg+ot+bonusTotal).toFixed(2)}</td></tr>`;
+      const gross=reg+bonusTotal;
+
+      // Summary card
+      h+=`<div style="margin-bottom:24px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          <div class="${e.color||'av1'}" style="width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0;">${e.name[0]}</div>
+          <div>
+            <div style="font-size:14px;font-weight:700;">${e.name}</div>
+            <div style="font-size:11px;color:var(--muted);">${e.role} - ₱${e.rate}/hr</div>
+          </div>
+          <div style="margin-left:auto;text-align:right;">
+            <div style="font-size:18px;font-weight:800;color:var(--teal);">₱${gross.toFixed(2)}</div>
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Gross Pay</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
+          <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;text-align:center;">
+            <div style="font-size:18px;font-weight:700;">${days}</div>
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Days</div>
+          </div>
+          <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;text-align:center;">
+            <div style="font-size:18px;font-weight:700;">${decHrs(tot)}</div>
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Total Hours</div>
+          </div>
+          <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;text-align:center;">
+            <div style="font-size:18px;font-weight:700;color:var(--teal);">₱${reg.toFixed(2)}</div>
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">Regular Pay</div>
+          </div>
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;">
+          <thead><tr>
+            <th style="text-align:left;padding:8px 10px;background:var(--surface2);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Date</th>
+            <th style="text-align:left;padding:8px 10px;background:var(--surface2);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Clock In</th>
+            <th style="text-align:left;padding:8px 10px;background:var(--surface2);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Clock Out</th>
+            <th style="text-align:left;padding:8px 10px;background:var(--surface2);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Hours</th>
+            <th style="text-align:right;padding:8px 10px;background:var(--surface2);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Pay</th>
+          </tr></thead>
+          <tbody>`;
+      if(!dates2.length){ h+=`<tr><td colspan="5" style="padding:12px 10px;color:var(--muted);text-align:center;">No entries for this period.</td></tr>`; }
+      dates2.forEach(dd=>{
+        const dayLogs=logs.filter(l=>l.empId===e.id&&l.date===dd).sort((a,b)=>a.time.localeCompare(b.time));
+        const inL=dayLogs.find(l=>l.type==='in');
+        const outL=[...dayLogs].reverse().find(l=>l.type==='out');
+        const hh=hoursWorkedDay(e.id,dd);
+        const pay=hh*e.rate;
+        const isManual=dayLogs.some(l=>l.manual);
+        h+=`<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px 10px;">${dd}${isManual?'<span style="margin-left:5px;font-size:9px;background:rgba(215,144,104,0.15);color:var(--gold);padding:1px 5px;border-radius:4px;">MANUAL</span>':''}</td>
+          <td style="padding:8px 10px;font-family:monospace;">${inL?inL.time.slice(0,5):'<span style="color:var(--muted)">-</span>'}</td>
+          <td style="padding:8px 10px;font-family:monospace;">${outL?outL.time.slice(0,5):'<span style="color:var(--muted)">-</span>'}</td>
+          <td style="padding:8px 10px;font-family:monospace;">${hh>0?decHrs(hh):'-'}</td>
+          <td style="padding:8px 10px;text-align:right;color:var(--teal);">${hh>0?'₱'+pay.toFixed(2):'-'}</td>
+        </tr>`;
+      });
+      h+='</tbody></table>';
+
+      // Pay breakdown
+      h+=`<div style="background:var(--surface2);border-radius:8px;padding:12px 14px;font-size:13px;">`;
+      h+=`<div style="display:flex;justify-content:space-between;padding:4px 0;"><span style="color:var(--muted);">Regular Pay</span><span>₱${reg.toFixed(2)}</span></div>`;
+      if(bonusTotal>0) h+=`<div style="display:flex;justify-content:space-between;padding:4px 0;"><span style="color:var(--muted);">Bonus & Commission</span><span>₱${bonusTotal.toFixed(2)}</span></div>`;
+      h+=`<div style="display:flex;justify-content:space-between;padding:8px 0 4px;border-top:1.5px solid var(--border);margin-top:6px;font-weight:700;font-size:14px;"><span>GROSS PAY</span><span style="color:var(--teal);">₱${gross.toFixed(2)}</span></div>`;
+      h+='</div></div>';
+
+      if(emps.indexOf(e)<emps.length-1) h+='<hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">';
     });
-    el.innerHTML=h+'</tbody></table>';
+    el.innerHTML=h||'<div class="empty-state">No data for this period.</div>';
   }
 }
 
@@ -1210,18 +1262,18 @@ function exportCSV(){
   let csv='',fn='report.csv';
   if(type==='daily'){
     csv='Employee,Role,Clock In,Clock Out,Hours (dec),Status\n';
-    buildDailySummary(single,empId).forEach(r=>csv+=`"${r.name}","${r.role}","${r.in}","${r.out}","${decHrs(r.hours)}","${r.in==='—'?'Absent':r.late?'Late':'On Time'}"\n`);
+    buildDailySummary(single,empId).forEach(r=>csv+=`"${r.name}","${r.role}","${r.in}","${r.out}","${decHrs(r.hours)}","${r.in==='-'?'Absent':r.late?'Late':'On Time'}"\n`);
     fn=`daily_${single}.csv`;
   } else if(type==='payperiod'){
     const emps=getEmps().filter(e=>empId==='all'||e.id===empId);
     const logs=getLogs(); const bonuses=getBonuses();
-    csv='Employee,Role,Days,Total Hours,Regular Pay,OT Pay,Bonus,Gross Pay\n';
+    csv='Employee,Role,Days,Total Hours,Regular Pay,Bonus,Gross Pay\n';
     emps.forEach(e=>{
-      let days=0,tot=0,reg=0,ot=0;
+      let days=0,tot=0,reg=0;
       const dates2=[...new Set(logs.filter(l=>l.empId===e.id&&l.date>=from&&l.date<=to).map(l=>l.date))];
-      dates2.forEach(dd=>{ const hh=hoursWorkedDay(e.id,dd); if(hh>0)days++; tot+=hh; const std=stdHrs(e); reg+=Math.min(hh,std)*e.rate; ot+=Math.max(0,hh-std)*e.rate*1.25; });
+      dates2.forEach(dd=>{ const hh=hoursWorkedDay(e.id,dd); if(hh>0)days++; tot+=hh; reg+=hh*e.rate; });
       const bt=bonuses.filter(b=>b.empId===e.id&&b.date>=from&&b.date<=to).reduce((a,b)=>a+b.amount,0);
-      csv+=`"${e.name}","${e.role}","${days}","${decHrs(tot)}","${reg.toFixed(2)}","${ot.toFixed(2)}","${bt.toFixed(2)}","${(reg+ot+bt).toFixed(2)}"\n`;
+      csv+=`"${e.name}","${e.role}","${days}","${decHrs(tot)}","${reg.toFixed(2)}","${bt.toFixed(2)}","${(reg+bt).toFixed(2)}"\n`;
     });
     fn=`payperiod_${from}_to_${to}.csv`;
   } else {
@@ -1244,13 +1296,13 @@ function generatePDFReport(){
   const s=type==='payperiod'?from:single, e2=type==='payperiod'?to:single;
   let rows='';
   emps.forEach(e=>{
-    let days=0,tot=0,reg=0,ot=0;
+    let days=0,tot=0,reg=0;
     const dates2=[...new Set(logs.filter(l=>l.empId===e.id&&l.date>=s&&l.date<=e2).map(l=>l.date))];
-    dates2.forEach(dd=>{ const hh=hoursWorkedDay(e.id,dd); if(hh>0)days++; tot+=hh; const std=stdHrs(e); reg+=Math.min(hh,std)*e.rate; ot+=Math.max(0,hh-std)*e.rate*1.25; });
+    dates2.forEach(dd=>{ const hh=hoursWorkedDay(e.id,dd); if(hh>0)days++; tot+=hh; reg+=hh*e.rate; });
     const bt=bonuses.filter(b=>b.empId===e.id&&b.date>=s&&b.date<=e2).reduce((a,b2)=>a+b2.amount,0);
-    rows+=`<tr><td>${e.name}</td><td>${e.role}</td><td>${days}</td><td>${decHrs(tot)}</td><td>₱${reg.toFixed(2)}</td><td>₱${ot.toFixed(2)}</td><td>₱${bt.toFixed(2)}</td><td><strong>₱${(reg+ot+bt).toFixed(2)}</strong></td></tr>`;
+    rows+=`<tr><td>${e.name}</td><td>${e.role}</td><td>${days}</td><td>${decHrs(tot)}</td><td>₱${reg.toFixed(2)}</td><td>₱${bt.toFixed(2)}</td><td><strong>₱${(reg+bt).toFixed(2)}</strong></td></tr>`;
   });
-  const html=`<!DOCTYPE html><html><head><title>Pay Period Report — CLS</title><style>body{font-family:'Poppins','Helvetica Neue',Arial,sans-serif;padding:36px;color:#111;font-size:13px;background:#fff;}h1{font-family:'Poppins','Helvetica Neue',Arial,sans-serif;font-weight:700;font-size:24px;margin-bottom:4px;color:#0c0c0c;}h1 span{color:#c9a84c;}.sub{color:#666;margin-bottom:28px;font-size:12px;}.logo{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#c9a84c;margin-bottom:6px;}table{width:100%;border-collapse:collapse;}th{background:#0c0c0c;color:#f0e8d8;padding:10px 12px;text-align:left;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;}td{padding:10px 12px;border-bottom:1px solid #eee;}tr:nth-child(even) td{background:#faf9f7;}.footer{margin-top:32px;font-size:11px;color:#999;text-align:center;border-top:1px solid #eee;padding-top:16px;}</style></head><body><div class="logo">Click Lounge Studio</div><h1>TimeCommand <span>·</span> Payroll Report</h1><div class="sub">Period: ${s} to ${e2} &nbsp;·&nbsp; Generated: ${new Date().toLocaleString('en-PH',{timeZone:'Asia/Manila'})} PHT</div><table><thead><tr><th>Employee</th><th>Role</th><th>Days</th><th>Hours</th><th>Regular</th><th>OT Pay</th><th>Bonus</th><th>Gross Pay</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">Generated by TimeCommand for Click Lounge Studio · Confidential</div></body></html>`;
+  const html=`<!DOCTYPE html><html><head><title>Pay Period Report - CLS</title><style>body{font-family:'Poppins','Helvetica Neue',Arial,sans-serif;padding:36px;color:#111;font-size:13px;background:#fff;}h1{font-family:'Poppins','Helvetica Neue',Arial,sans-serif;font-weight:700;font-size:24px;margin-bottom:4px;color:#0c0c0c;}h1 span{color:#c9a84c;}.sub{color:#666;margin-bottom:28px;font-size:12px;}.logo{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#c9a84c;margin-bottom:6px;}table{width:100%;border-collapse:collapse;}th{background:#0c0c0c;color:#f0e8d8;padding:10px 12px;text-align:left;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;}td{padding:10px 12px;border-bottom:1px solid #eee;}tr:nth-child(even) td{background:#faf9f7;}.footer{margin-top:32px;font-size:11px;color:#999;text-align:center;border-top:1px solid #eee;padding-top:16px;}</style></head><body><div class="logo">Click Lounge Studio</div><h1>TimeCommand <span>·</span> Payroll Report</h1><div class="sub">Period: ${s} to ${e2} &nbsp;·&nbsp; Generated: ${new Date().toLocaleString('en-PH',{timeZone:'Asia/Manila'})} PHT</div><table><thead><tr><th>Employee</th><th>Role</th><th>Days</th><th>Hours</th><th>Regular</th><th>Bonus</th><th>Gross Pay</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">Generated by TimeCommand for Click Lounge Studio - Confidential</div></body></html>`;
   const w=window.open('','_blank'); w.document.write(html); w.document.close();
   setTimeout(()=>w.print(),500);
 
@@ -1260,15 +1312,15 @@ function generatePDFReport(){
     const idx=empsAll.findIndex(x=>x.id===e.id);
     if(idx>-1){
       if(!empsAll[idx].history) empsAll[idx].history=[];
-      let days=0,tot=0,reg=0,ot=0;
+      let days=0,tot=0,reg=0;
       const dates2=[...new Set(logs.filter(l=>l.empId===e.id&&l.date>=s&&l.date<=e2).map(l=>l.date))];
-      dates2.forEach(dd=>{ const hh=hoursWorkedDay(e.id,dd); if(hh>0)days++; tot+=hh; const std2=stdHrs(e); reg+=Math.min(hh,std2)*e.rate; ot+=Math.max(0,hh-std2)*e.rate*1.25; });
+      dates2.forEach(dd=>{ const hh=hoursWorkedDay(e.id,dd); if(hh>0)days++; tot+=hh; reg+=hh*e.rate; });
       const bt2=bonuses.filter(b=>b.empId===e.id&&b.date>=s&&b.date<=e2).reduce((a,b2)=>a+b2.amount,0);
-      empsAll[idx].history.push({ date:todayPH(), note:`📄 Payroll PDF generated — Period: ${s} to ${e2} · Gross: ₱${(reg+ot+bt2).toFixed(2)}` });
+      empsAll[idx].history.push({ date:todayPH(), note:`📄 Payroll PDF generated - Period: ${s} to ${e2} - Gross: ₱${(reg+bt2).toFixed(2)}` });
     }
   });
   saveEmps(empsAll);
-  showToast('PDF ready · Saved to employee history','success');
+  showToast('PDF ready - Saved to employee history','success');
 }
 
 // ══════════════════════════════════
@@ -1289,24 +1341,24 @@ function emailPayrollReport(){
 
   // Build payroll data per employee
   const payData=emps.map(e=>{
-    let days=0,tot=0,reg=0,ot=0;
+    let days=0,tot=0,reg=0;
     const dates2=[...new Set(logs.filter(l=>l.empId===e.id&&l.date>=s&&l.date<=e2).map(l=>l.date))];
     dates2.forEach(dd=>{
       const hh=hoursWorkedDay(e.id,dd);
-      if(hh>0){ days++; tot+=hh; const std=stdHrs(e); reg+=Math.min(hh,std)*e.rate; ot+=Math.max(0,hh-std)*e.rate*1.25; }
+      if(hh>0){ days++; tot+=hh; reg+=hh*e.rate; }
     });
     const bonus=bonuses.filter(b=>b.empId===e.id&&b.date>=s&&b.date<=e2).reduce((a,b2)=>a+b2.amount,0);
-    const gross=reg+ot+bonus;
+    const gross=reg+bonus;
     const token=btoa(`${e.id}|${s}|${e2}|${gross.toFixed(2)}`).replace(/=/g,'');
     const confirmUrl=`${APP_URL}?confirmPay=${token}&empId=${e.id}&period=${s}_${e2}&amount=${gross.toFixed(2)}`;
-    return {e,days,tot,reg,ot,bonus,gross,token,confirmUrl};
+    return {e,days,tot,reg,bonus,gross,token,confirmUrl};
   });
 
   // Generate a separate email window for EACH employee (or combined for "all")
   const isSingle = empId!=='all' && payData.length===1;
 
   payData.forEach(pd=>{
-    const {e,days,tot,reg,ot,bonus,gross,confirmUrl}=pd;
+    const {e,days,tot,reg,bonus,gross,confirmUrl}=pd;
     const logRows=[];
     // Detailed daily log
     const dates3=[...new Set(logs.filter(l=>l.empId===e.id&&l.date>=s&&l.date<=e2).map(l=>l.date))].sort();
@@ -1314,25 +1366,22 @@ function emailPayrollReport(){
       const dayLogs=logs.filter(l=>l.empId===e.id&&l.date===dd).sort((a,b)=>a.time.localeCompare(b.time));
       let inT=null; let hh=0;
       dayLogs.forEach(l=>{ if(l.type==='in')inT=l.time; if(l.type==='out'&&inT){hh+=timeDiff(inT,l.time);inT=null;} });
-      const std=stdHrs(e);
-      const regH=Math.min(hh,std); const otH=Math.max(0,hh-std);
-      const regP=regH*e.rate; const otP=otH*e.rate*1.25;
+      const regP=hh*e.rate;
       const inLog=dayLogs.find(l=>l.type==='in');
       const outLog=[...dayLogs].reverse().find(l=>l.type==='out');
       logRows.push(`<tr>
         <td>${dd}</td>
-        <td>${inLog?inLog.time.slice(0,5):'—'}</td>
-        <td>${outLog?outLog.time.slice(0,5):'—'}</td>
+        <td>${inLog?inLog.time.slice(0,5):'-'}</td>
+        <td>${outLog?outLog.time.slice(0,5):'-'}</td>
         <td>${decHrs(hh)}</td>
         <td style="color:#2f4f4f;">₱${regP.toFixed(2)}</td>
-        <td style="color:#d79068;">${otH>0?'₱'+otP.toFixed(2):'—'}</td>
       </tr>`);
     });
     // Bonuses
     const empBonuses=bonuses.filter(b=>b.empId===e.id&&b.date>=s&&b.date<=e2);
 
     const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>Payroll — ${e.name}</title>
+<title>Payroll - ${e.name}</title>
 
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
@@ -1382,7 +1431,7 @@ function emailPayrollReport(){
       <div class="emp-av">${e.name[0]}</div>
       <div>
         <div class="emp-name">${e.name}</div>
-        <div class="emp-role">${e.role} · ₱${e.rate}/hr · Shift ${e.shiftStart}–${e.shiftEnd}</div>
+        <div class="emp-role">${e.role} - ₱${e.rate}/hr - Shift ${e.shiftStart}–${e.shiftEnd}</div>
       </div>
     </div>
 
@@ -1394,7 +1443,7 @@ function emailPayrollReport(){
 
     <div class="section-title">Daily Time Record</div>
     <table>
-      <thead><tr><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Regular Pay</th><th>OT Pay</th></tr></thead>
+      <thead><tr><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Regular Pay</th></tr></thead>
       <tbody>${logRows.join('')}</tbody>
     </table>
 
@@ -1403,7 +1452,6 @@ function emailPayrollReport(){
     <div class="section-title">Pay Breakdown</div>
     <div class="pay-box">
       <div class="pay-row"><span>Regular Pay</span><span>₱${reg.toFixed(2)}</span></div>
-      <div class="pay-row"><span>Overtime Pay (1.25×)</span><span>₱${ot.toFixed(2)}</span></div>
       ${bonus>0?`<div class="pay-row"><span>Bonus & Commission</span><span>₱${bonus.toFixed(2)}</span></div>`:''}
       <div class="pay-row total"><span>GROSS PAY</span><span class="amt">₱${gross.toFixed(2)}</span></div>
     </div>
@@ -1411,7 +1459,7 @@ function emailPayrollReport(){
     <div class="confirm-box" id="confirmBox">
       <h3>Please Confirm Receipt of Payment</h3>
       <p>Once you have received your salary of <strong>₱${gross.toFixed(2)}</strong> for the period ${s} to ${e2}, click the button below to confirm.</p>
-      <a href="${confirmUrl}" class="confirm-btn" style="display:inline-block;margin-bottom:12px;">✅ I Confirm — I Have Received My Pay</a>
+      <a href="${confirmUrl}" class="confirm-btn" style="display:inline-block;margin-bottom:12px;">✅ I Confirm - I Have Received My Pay</a>
       <p style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:4px;">If the button does not open, copy and paste this link into your browser:</p>
       <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:8px 12px;margin-top:6px;word-break:break-all;font-size:10px;color:rgba(255,255,255,0.6);">${confirmUrl}</div>
     </div>
@@ -1419,7 +1467,7 @@ function emailPayrollReport(){
   </div>
 
   <div class="footer">
-    Click Lounge Studio · TimeCommand Payroll System · Confidential<br>
+    Click Lounge Studio - TimeCommand Payroll System - Confidential<br>
     This is an official payroll statement. Please keep a copy for your records.
   </div>
 </div>
@@ -1430,7 +1478,7 @@ function emailPayrollReport(){
     w.document.write(html); w.document.close();
     // Let page load then offer mailto
     setTimeout(()=>{
-      const mailSubject=encodeURIComponent(`CLS Payroll — ${s} to ${e2} — ${e.name}`);
+      const mailSubject=encodeURIComponent(`CLS Payroll - ${s} to ${e2} - ${e.name}`);
       const plainBody=`Hi ${e.name},\n\nPlease find your payroll statement for ${s} to ${e2}.\n\nGross Pay: ₱${gross.toFixed(2)}\nDays Worked: ${days}\nTotal Hours: ${decHrs(tot)}\n\nTo confirm receipt of your salary, click here:\n${confirmUrl}\n\n---\nClick Lounge Studio`;
       const gmailUrl=`https://mail.google.com/mail/u/0/?view=cm&fs=1&to=${encodeURIComponent(e.email||'')}&su=${mailSubject}&body=${encodeURIComponent(plainBody)}`;
       const mailtoUrl=`mailto:${encodeURIComponent(e.email||'')}?subject=${mailSubject}&body=${encodeURIComponent(plainBody)}`;
@@ -1475,14 +1523,14 @@ function emailPayrollReport(){
     const idx=empsAll.findIndex(x=>x.id===e.id);
     if(idx>-1){
       if(!empsAll[idx].history) empsAll[idx].history=[];
-      empsAll[idx].history.push({date:todayPH(),note:`📧 Payroll email sent — Period: ${s} to ${e2} · Gross: ₱${gross.toFixed(2)} · Awaiting confirmation`});
+      empsAll[idx].history.push({date:todayPH(),note:`📧 Payroll email sent - Period: ${s} to ${e2} - Gross: ₱${gross.toFixed(2)} - Awaiting confirmation`});
       // Store pending confirmation token
       if(!empsAll[idx].pendingConfirmations) empsAll[idx].pendingConfirmations=[];
       empsAll[idx].pendingConfirmations.push({token:btoa(`${e.id}|${s}|${e2}|${gross.toFixed(2)}`).replace(/=/g,''),sentDate:todayPH(),period:s+'|'+e2,amount:gross.toFixed(2),confirmed:false});
     }
   });
   saveEmps(empsAll);
-  showToast(`Payroll email report opened for ${payData.length} employee${payData.length>1?'s':''}  · Waiting for confirmation`,'success');
+  showToast(`Payroll email report opened for ${payData.length} employee${payData.length>1?'s':''}  - Waiting for confirmation`,'success');
 }
 
 // ══════════════════════════════════
@@ -1558,11 +1606,11 @@ function updatePCAmount(){
   if(!empId||!from||!to) return;
   const emps=getEmps(); const logs=getLogs(); const bonuses=getBonuses();
   const emp=emps.find(e=>e.id===empId); if(!emp) return;
-  let days=0,tot=0,reg=0,ot=0;
+  let days=0,tot=0,reg=0;
   const dates2=[...new Set(logs.filter(l=>l.empId===empId&&l.date>=from&&l.date<=to).map(l=>l.date))];
-  dates2.forEach(dd=>{ const hh=hoursWorkedDay(empId,dd); if(hh>0)days++; tot+=hh; const std=stdHrs(emp); reg+=Math.min(hh,std)*emp.rate; ot+=Math.max(0,hh-std)*emp.rate*1.25; });
+  dates2.forEach(dd=>{ const hh=hoursWorkedDay(empId,dd); if(hh>0)days++; tot+=hh; reg+=hh*emp.rate; });
   const bt=bonuses.filter(b=>b.empId===empId&&b.date>=from&&b.date<=to).reduce((a,b2)=>a+b2.amount,0);
-  const gross=reg+ot+bt;
+  const gross=reg+bt;
   const amtEl=document.getElementById('pc-amount');
   if(amtEl) amtEl.value=gross.toFixed(2);
 }
@@ -1578,8 +1626,8 @@ function submitPayConfirm(){
   if(!amount){ showToast('Enter the amount paid','error'); return; }
 
   const methodLabel={'cash':'💵 Cash','gcash':'📱 GCash','bank':'🏦 Bank Transfer'}[_pcMethod]||_pcMethod;
-  const refNote=ref?` · Ref: ${ref}`:'';
-  const histNote=`✅ Salary received — ₱${amount.toFixed(2)} via ${methodLabel}${refNote} · Period: ${from} to ${to}${notes?' · '+notes:''}`;
+  const refNote=ref?' - Ref: '+ref:'';
+  const histNote='Salary received - P'+amount.toFixed(2)+' via '+methodLabel+refNote+' - Period: '+from+' to '+to+(notes?' - '+notes:'');
 
   const emps=getEmps();
   const idx=emps.findIndex(e=>e.id===empId);
@@ -1596,7 +1644,7 @@ function submitPayConfirm(){
 
     saveEmps(emps);
     closeFormModal('modalPayConfirm');
-    showToast(`✅ Payment confirmed — ${emps[idx].name} · ₱${amount.toFixed(2)} via ${methodLabel}`,'success');
+    showToast(`✅ Payment confirmed - ${emps[idx].name} - ₱${amount.toFixed(2)} via ${methodLabel}`,'success');
     renderEmpManage();
   }
 }
@@ -1647,7 +1695,7 @@ function renderAttendance(){
 
   const rows=Object.values(grouped).sort((a,b)=>b.date.localeCompare(a.date)||a.empId.localeCompare(b.empId));
   let html='<table style="width:100%;border-collapse:collapse;">';
-  html+='<thead><tr><th style="text-align:left;padding:10px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--surface2);border-bottom:1px solid var(--border);">Date</th><th style="text-align:left;padding:10px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--surface2);">Employee</th><th style="text-align:left;padding:10px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--surface2);">Clock In</th><th style="text-align:left;padding:10px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--surface2);">Clock Out</th><th style="text-align:left;padding:10px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--surface2);">Hours</th><th style="text-align:left;padding:10px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--surface2);">Regular</th><th style="text-align:left;padding:10px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--surface2);">OT</th><th style="padding:10px 12px;background:var(--surface2);"></th></tr></thead><tbody>';
+  html+='<thead><tr><th style="text-align:left;padding:10px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--surface2);border-bottom:1px solid var(--border);">Date</th><th style="text-align:left;padding:10px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--surface2);">Employee</th><th style="text-align:left;padding:10px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--surface2);">Clock In</th><th style="text-align:left;padding:10px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--surface2);">Clock Out</th><th style="text-align:left;padding:10px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--surface2);">Hours</th><th style="text-align:left;padding:10px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);background:var(--surface2);">Regular</th><th style="padding:10px 12px;background:var(--surface2);"></th></tr></thead><tbody>';
 
   rows.forEach(row=>{
     const emp=emps.find(e=>e.id===row.empId);
@@ -1657,17 +1705,16 @@ function renderAttendance(){
     const outLog=[...sorted].reverse().find(l=>l.type==='out');
     const hh=hoursWorkedDay(row.empId,row.date);
     const std=stdHrs(emp);
-    const regH=Math.min(hh,std), otH=Math.max(0,hh-std);
+    const regH=hh;
     const isManual=row.logs.some(l=>l.manual);
-    const isOT=otH>0;
-    html+=`<tr style="border-bottom:1px solid var(--border);">
+        html+=`<tr style="border-bottom:1px solid var(--border);">
       <td style="padding:10px 12px;font-size:13px;">${row.date}${isManual?'<span style="margin-left:6px;font-size:9px;background:rgba(215,144,104,0.15);color:var(--gold);padding:2px 6px;border-radius:6px;font-weight:600;">MANUAL</span>':''}</td>
       <td style="padding:10px 12px;font-size:13px;font-weight:500;">${emp.name}</td>
-      <td style="padding:10px 12px;font-size:13px;">${inLog?inLog.time.slice(0,5):'<span style="color:var(--muted);">—</span>'}</td>
-      <td style="padding:10px 12px;font-size:13px;">${outLog?outLog.time.slice(0,5):'<span style="color:var(--muted);">—</span>'}</td>
-      <td style="padding:10px 12px;font-size:13px;font-weight:600;">${hh>0?decHrs(hh):'—'}</td>
-      <td style="padding:10px 12px;font-size:12px;color:var(--teal);">${regH>0?'₱'+(regH*emp.rate).toFixed(2):'—'}</td>
-      <td style="padding:10px 12px;font-size:12px;color:${isOT?'var(--gold)':'var(--muted)'};">${isOT?'₱'+(otH*emp.rate*1.25).toFixed(2)+' <span style="font-size:10px;">('+decHrs(otH)+'h)</span>':'—'}</td>
+      <td style="padding:10px 12px;font-size:13px;">${inLog?inLog.time.slice(0,5):'<span style="color:var(--muted);">-</span>'}</td>
+      <td style="padding:10px 12px;font-size:13px;">${outLog?outLog.time.slice(0,5):'<span style="color:var(--muted);">-</span>'}</td>
+      <td style="padding:10px 12px;font-size:13px;font-weight:600;">${hh>0?decHrs(hh):'-'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--teal);">${regH>0?'₱'+(regH*emp.rate).toFixed(2):'-'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:-;">-</td>
       <td style="padding:10px 12px;">
         <button onclick="openEditEntry('${row.empId}','${row.date}')" class="btn" style="font-size:11px;padding:4px 10px;">✏</button>
         <button onclick="deleteEntry('${row.empId}','${row.date}')" class="btn" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:var(--red);margin-left:4px;">🗑</button>
@@ -1717,7 +1764,7 @@ function meUpdateShift(){
   const hint=document.getElementById('me-shift-hint');
   if(emp&&hint){
     const std=stdHrs(emp);
-    hint.textContent=`Scheduled shift: ${emp.shiftStart} – ${emp.shiftEnd} (${std}h standard · OT = anything beyond ${emp.shiftEnd} at ₱${(emp.rate*1.25).toFixed(0)}/hr)`;
+    hint.textContent=`Scheduled shift: ${emp.shiftStart} – ${emp.shiftEnd} · ₱${emp.rate}/hr flat rate`;
   }
   meFillExisting();
   mePreview();
@@ -1744,22 +1791,20 @@ function mePreview(){
   if(!empId||!inVal){ el.style.display='none'; return; }
   const emp=getEmps().find(e=>e.id===empId);
   if(!emp){ el.style.display='none'; return; }
-  if(!outVal){ el.style.display=''; el.innerHTML='<span style="color:var(--muted);">⏳ Clock-out not set — hours will be calculated when clocked out.</span>'; return; }
+  if(!outVal){ el.style.display=''; el.innerHTML='<span style="color:var(--muted);">⏳ Clock-out not set - hours will be calculated when clocked out.</span>'; return; }
   const hh=timeDiff(inVal+':00', outVal+':00');
   if(hh<=0){ el.style.display=''; el.innerHTML='<span style="color:var(--red);">⚠ Clock-out must be after clock-in.</span>'; return; }
-  const std=stdHrs(emp), regH=Math.min(hh,std), otH=Math.max(0,hh-std);
-  const regPay=regH*emp.rate, otPay=otH*emp.rate*1.25, gross=regPay+otPay;
+  const regH=hh;
+  const regPay=regH*emp.rate, gross=regPay;
   el.style.display='';
   el.innerHTML=`<strong style="color:var(--teal);">Preview for this entry:</strong>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;">
       <div style="text-align:center;"><div style="font-size:15px;font-weight:700;">${decHrs(hh)}</div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;">Total Hours</div></div>
       <div style="text-align:center;"><div style="font-size:14px;font-weight:700;color:var(--teal);">₱${regPay.toFixed(2)}</div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;">Regular Pay</div></div>
-      <div style="text-align:center;"><div style="font-size:14px;font-weight:700;color:${otH>0?'var(--gold)':'var(--muted)'};">${otH>0?'₱'+otPay.toFixed(2):'—'}</div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;">OT Pay (1.25×)</div></div>
       <div style="text-align:center;"><div style="font-size:14px;font-weight:700;">₱${gross.toFixed(2)}</div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;">Day Total</div></div>
     </div>
-    ${otH>0?`<div style="margin-top:8px;font-size:11px;color:var(--gold);">⏰ ${decHrs(otH)} overtime beyond ${emp.shiftEnd} shift end</div>`:''}`;
+  `;
 }
-
 function submitManualEntry(){
   const empId=document.getElementById('me-emp').value;
   const date=document.getElementById('me-date').value;
@@ -1786,7 +1831,7 @@ function submitManualEntry(){
     const idx=empsAll.findIndex(e=>e.id===empId);
     if(idx>-1){
       if(!empsAll[idx].history) empsAll[idx].history=[];
-      empsAll[idx].history.push({date:todayPH(),note:`✏ Manual entry added — ${date}: In ${inVal}${outVal?' Out '+outVal:' (no clock-out)'}${note?' — '+note:''}`});
+      empsAll[idx].history.push({date:todayPH(),note:'Manual entry added - '+date+': In '+inVal+(outVal?' Out '+outVal:' (no clock-out)')+(note?' - '+note:'')});
       saveEmps(empsAll);
     }
   }
@@ -1794,11 +1839,11 @@ function submitManualEntry(){
   closeFormModal('modalManualEntry');
   renderAttendance();
   renderDashboard();
-  showToast(`Entry saved — ${emp?.name} on ${date}`,'success');
+  showToast('Entry saved - '+(emp?.name||'Employee')+' on '+date,'success');
 }
 
 function deleteEntry(empId, date){
-  if(!confirm(`Delete ALL time entries for ${empId} on ${date}?`)) return;
+  if(!confirm('Delete ALL time entries for '+empId+' on '+date+'?')) return;
   saveLogs(getLogs().filter(l=>!(l.empId===empId&&l.date===date)));
   renderAttendance();
   renderDashboard();
@@ -1839,55 +1884,76 @@ document.addEventListener('DOMContentLoaded',()=>{
       const alreadyConfirmed=pending&&pending.confirmed;
 
       // Show full-screen confirmation UI
-      document.body.innerHTML=`
-      <div style="font-family:'Poppins','Helvetica Neue',Arial,sans-serif;background:#f0f5f4;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;">
-        <div style="background:#fff;border-radius:20px;box-shadow:0 8px 40px rgba(47,79,79,0.12);max-width:480px;width:100%;overflow:hidden;">
-          <div style="background:#2f4f4f;padding:28px;text-align:center;">
-            <div style="font-size:48px;margin-bottom:10px;">${alreadyConfirmed?'✅':'📋'}</div>
-            <div style="font-size:11px;letter-spacing:3px;text-transform:uppercase;color:rgba(244,247,246,0.5);margin-bottom:6px;">Click Lounge Studio</div>
-            <h1 style="color:#f4f7f6;font-size:20px;font-weight:700;margin-bottom:4px;">${alreadyConfirmed?'Already Confirmed':'Salary Receipt Confirmation'}</h1>
-            <p style="color:rgba(244,247,246,0.6);font-size:13px;">${alreadyConfirmed?'You have already confirmed receipt of this payment.':'Please confirm that you have received your salary.'}</p>
-          </div>
-          <div style="padding:28px;">
-            <div style="background:#f0f5f4;border-radius:12px;padding:18px;margin-bottom:20px;">
-              <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
-                <div style="width:44px;height:44px;border-radius:50%;background:#51897d;color:#fff;font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;">${emp.name[0]}</div>
-                <div><div style="font-size:15px;font-weight:700;color:#1e3333;">${emp.name}</div><div style="font-size:12px;color:#6b8c8c;">${emp.role}</div></div>
-              </div>
-              ${confirmPeriod?`<div style="font-size:13px;color:#6b8c8c;margin-bottom:4px;">📅 Period: <strong style="color:#1e3333;">${confirmPeriod.replace('_',' to ')}</strong></div>`:''}
-              ${confirmAmt?`<div style="font-size:20px;font-weight:700;color:#2f4f4f;margin-top:8px;">Gross Pay: ₱${parseFloat(confirmAmt).toFixed(2)}</div>`:''}
-            </div>
-            ${alreadyConfirmed
-              ? `<div style="text-align:center;background:rgba(81,137,125,0.08);border:1.5px solid rgba(81,137,125,0.2);border-radius:10px;padding:16px;color:#2f4f4f;font-weight:600;">✅ Payment confirmed on ${pending.confirmedAt||'record'}</div>`
-              : `<div style="margin-bottom:16px;">
-                  <div style="font-size:12px;color:#6b8c8c;margin-bottom:8px;font-weight:600;">Select payment method received:</div>
-                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">
-                    <div onclick="document.querySelectorAll('.pm-btn').forEach(b=>b.style.borderColor='rgba(47,79,79,0.1)');this.style.borderColor='#51897d';document.getElementById('conf-method').value='cash';" class="pm-btn" style="border:2px solid rgba(47,79,79,0.1);border-radius:10px;padding:14px 8px;cursor:pointer;text-align:center;transition:all .15s;"><div style="font-size:22px;">💵</div><div style="font-size:12px;font-weight:600;margin-top:4px;">Cash</div></div>
-                    <div onclick="document.querySelectorAll('.pm-btn').forEach(b=>b.style.borderColor='rgba(47,79,79,0.1)');this.style.borderColor='#51897d';document.getElementById('conf-method').value='gcash';" class="pm-btn" style="border:2px solid rgba(47,79,79,0.1);border-radius:10px;padding:14px 8px;cursor:pointer;text-align:center;transition:all .15s;"><div style="font-size:22px;">📱</div><div style="font-size:12px;font-weight:600;margin-top:4px;">GCash</div></div>
-                    <div onclick="document.querySelectorAll('.pm-btn').forEach(b=>b.style.borderColor='rgba(47,79,79,0.1)');this.style.borderColor='#51897d';document.getElementById('conf-method').value='bank';" class="pm-btn" style="border:2px solid rgba(47,79,79,0.1);border-radius:10px;padding:14px 8px;cursor:pointer;text-align:center;transition:all .15s;"><div style="font-size:22px;">🏦</div><div style="font-size:12px;font-weight:600;margin-top:4px;">Bank Transfer</div></div>
-                  </div>
-                  <input type="hidden" id="conf-method" value="">
-                  <input type="text" id="conf-ref" placeholder="Reference # (GCash/Bank — optional)" style="width:100%;padding:10px 14px;border:1.5px solid rgba(47,79,79,0.15);border-radius:8px;font-family:'Poppins','Helvetica Neue',Arial,sans-serif;font-size:13px;margin-bottom:12px;outline:none;">
-                  <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:16px;">
-                    <input type="checkbox" id="conf-ack" style="accent-color:#51897d;width:16px;height:16px;margin-top:2px;flex-shrink:0;">
-                    <label for="conf-ack" style="font-size:13px;color:#1e3333;cursor:pointer;">I, <strong>${emp.name}</strong>, confirm that I have received my salary of <strong>${confirmAmt?'₱'+parseFloat(confirmAmt).toFixed(2):''}</strong> for the period stated above.</label>
-                  </div>
-                  <button onclick="submitEmailConfirm('${confirmEmpId}','${confirmToken}','${confirmPeriod||''}','${confirmAmt||''}')" style="width:100%;background:linear-gradient(135deg,#51897d,#2f4f4f);color:#fff;border:none;padding:16px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Poppins','Helvetica Neue',Arial,sans-serif;letter-spacing:.5px;">✅ Confirm Receipt</button>
-                </div>`
-            }
-          </div>
-          <div style="background:#f0f5f4;padding:14px 28px;text-align:center;font-size:11px;color:#6b8c8c;border-top:1px solid #e8edec;">Click Lounge Studio · TimeCommand · Payroll Confirmation</div>
-        </div>
-      </div>`;
-
+      showConfirmScreen(emp, confirmToken, confirmPeriod, confirmAmt, alreadyConfirmed, pending);
       // Clean URL so refreshing doesn't re-trigger
       window.history.replaceState({},'',window.location.pathname);
     } else {
-      // Employee not found — show error
-      document.body.innerHTML=`<div style="font-family:'Poppins','Helvetica Neue',Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f0f5f4;"><div style="background:#fff;border-radius:16px;padding:40px;text-align:center;max-width:400px;"><div style="font-size:48px;">❌</div><h2 style="margin:12px 0 8px;color:#1e3333;">Invalid Link</h2><p style="color:#6b8c8c;font-size:13px;">This confirmation link is invalid or has expired. Please contact your manager.</p></div></div>`;
+      // Employee not found - show error
+      document.body.style.cssText='font-family:Poppins,Arial,sans-serif;background:#f0f5f4;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;box-sizing:border-box;margin:0;';
+      document.body.innerHTML='<div style="background:#fff;border-radius:16px;padding:40px;text-align:center;max-width:400px;">'
+        +'<div style="font-size:48px;">&#10060;</div>'
+        +'<h2 style="margin:12px 0 8px;color:#1e3333;">Invalid Link</h2>'
+        +'<p style="color:#6b8c8c;font-size:13px;">This confirmation link is invalid or has expired. Please contact your manager.</p>'
+        +'</div>';
     }
   }
 });
+
+function showConfirmScreen(emp, token, period, amt, alreadyConfirmed, pending){
+  var periodStr = period ? period.replace('_',' to ') : '';
+  var amtStr = amt ? '₱'+parseFloat(amt).toFixed(2) : '';
+  var confirmedOn = (pending && pending.confirmedAt) ? pending.confirmedAt : 'record';
+
+  var methodBtns = ['cash|💵|Cash','gcash|📱|GCash','bank|🏦|Bank Transfer'].map(function(s){
+    var p=s.split('|');
+    return '<div onclick="document.querySelectorAll(\'.pm-btn\').forEach(function(b){b.style.borderColor=\'rgba(47,79,79,0.1)\'});this.style.borderColor=\'#51897d\';document.getElementById(\'conf-method\').value=\''+p[0]+'\';" class="pm-btn" style="border:2px solid rgba(47,79,79,0.1);border-radius:10px;padding:14px 8px;cursor:pointer;text-align:center;transition:all .15s;"><div style="font-size:22px;">'+p[1]+'</div><div style="font-size:12px;font-weight:600;margin-top:4px;">'+p[2]+'</div></div>';
+  }).join('');
+
+  var formHtml = alreadyConfirmed
+    ? '<div style="text-align:center;background:rgba(81,137,125,0.08);border:1.5px solid rgba(81,137,125,0.2);border-radius:10px;padding:16px;color:#2f4f4f;font-weight:600;">✅ Payment confirmed on '+confirmedOn+'</div>'
+    : '<div style="margin-bottom:16px;"><div style="font-size:12px;color:#6b8c8c;margin-bottom:8px;font-weight:600;">Select payment method received:</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">'+methodBtns+'</div>'
+      +'<input type="hidden" id="conf-method" value="">'
+      +'<input type="text" id="conf-ref" placeholder="Reference # (GCash/Bank - optional)" style="width:100%;padding:10px 14px;border:1.5px solid rgba(47,79,79,0.15);border-radius:8px;font-family:Poppins,Arial,sans-serif;font-size:13px;margin-bottom:12px;box-sizing:border-box;outline:none;"/>'
+      +'<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:16px;">'
+        +'<input type="checkbox" id="conf-ack" style="accent-color:#51897d;width:16px;height:16px;margin-top:2px;flex-shrink:0;">'
+        +'<label for="conf-ack" style="font-size:13px;color:#1e3333;cursor:pointer;">I, <strong>'+emp.name+'</strong>, confirm that I have received my salary of <strong>'+amtStr+'</strong> for the period stated above.</label>'
+      +'</div>'
+      +'<button onclick="submitEmailConfirm(\''+emp.id+'\',\''+token+'\',\''+period+'\',\''+amt+'\')" style="width:100%;background:linear-gradient(135deg,#51897d,#2f4f4f);color:#fff;border:none;padding:16px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:Poppins,Arial,sans-serif;letter-spacing:.5px;">✅ Confirm Receipt</button>'
+      +'</div>';
+
+  document.body.style.fontFamily = "'Poppins','Helvetica Neue',Arial,sans-serif";
+  document.body.style.background = '#f0f5f4';
+  document.body.style.margin = '0';
+  document.body.style.display = 'flex';
+  document.body.style.alignItems = 'center';
+  document.body.style.justifyContent = 'center';
+  document.body.style.minHeight = '100vh';
+  document.body.style.padding = '20px';
+  document.body.style.boxSizing = 'border-box';
+
+  document.body.innerHTML =
+    '<div style="background:#fff;border-radius:20px;box-shadow:0 8px 40px rgba(47,79,79,0.12);max-width:480px;width:100%;overflow:hidden;">'
+      +'<div style="background:#2f4f4f;padding:28px;text-align:center;">'
+        +'<div style="font-size:48px;margin-bottom:10px;">'+(alreadyConfirmed?'✅':'📋')+'</div>'
+        +'<div style="font-size:11px;letter-spacing:3px;text-transform:uppercase;color:rgba(244,247,246,0.5);margin-bottom:6px;">Click Lounge Studio</div>'
+        +'<h1 style="color:#f4f7f6;font-size:20px;font-weight:700;margin-bottom:4px;">'+(alreadyConfirmed?'Already Confirmed':'Salary Receipt Confirmation')+'</h1>'
+        +'<p style="color:rgba(244,247,246,0.6);font-size:13px;">'+(alreadyConfirmed?'You have already confirmed receipt of this payment.':'Please confirm that you have received your salary.')+'</p>'
+      +'</div>'
+      +'<div style="padding:28px;">'
+        +'<div style="background:#f0f5f4;border-radius:12px;padding:18px;margin-bottom:20px;">'
+          +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">'
+            +'<div style="width:44px;height:44px;border-radius:50%;background:#51897d;color:#fff;font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;">'+emp.name[0]+'</div>'
+            +'<div><div style="font-size:15px;font-weight:700;color:#1e3333;">'+emp.name+'</div><div style="font-size:12px;color:#6b8c8c;">'+emp.role+'</div></div>'
+          +'</div>'
+          +(period?'<div style="font-size:13px;color:#6b8c8c;margin-bottom:4px;">📅 Period: <strong style="color:#1e3333;">'+periodStr+'</strong></div>':'')
+          +(amt?'<div style="font-size:20px;font-weight:700;color:#2f4f4f;margin-top:8px;">Gross Pay: '+amtStr+'</div>':'')
+        +'</div>'
+        +formHtml
+      +'</div>'
+      +'<div style="background:#f0f5f4;padding:14px 28px;text-align:center;font-size:11px;color:#6b8c8c;border-top:1px solid #e8edec;">Click Lounge Studio - TimeCommand - Payroll Confirmation</div>'
+    +'</div>';
+}
 
 function submitEmailConfirm(empId,token,period,amount){
   const ack=document.getElementById('conf-ack');
@@ -1901,7 +1967,7 @@ function submitEmailConfirm(empId,token,period,amount){
   if(idx===-1){ alert('Error: Employee record not found.'); return; }
 
   const methodLabel={'cash':'💵 Cash','gcash':'📱 GCash','bank':'🏦 Bank Transfer'}[method]||method;
-  const refNote=ref?` · Ref: ${ref}`:'';
+  const refNote=ref?' - Ref: '+ref:'';
   const confirmedAt=new Date().toLocaleString('en-PH',{timeZone:'Asia/Manila'});
 
   // Update pending confirmation
@@ -1918,7 +1984,7 @@ function submitEmailConfirm(empId,token,period,amount){
   if(!empsAll[idx].history) empsAll[idx].history=[];
   empsAll[idx].history.push({
     date:new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'}),
-    note:`✅ Salary receipt CONFIRMED by employee — ₱${parseFloat(amount||0).toFixed(2)} via ${methodLabel}${refNote} · Period: ${(period||'').replace('_',' to ')} · Confirmed: ${confirmedAt}`
+    note:'Salary confirmed - P'+parseFloat(amount||0).toFixed(2)+' via '+methodLabel+refNote+' Period: '+(period||'').replace('_',' to ')+' Confirmed: '+confirmedAt
   });
   // Store payment record
   if(!empsAll[idx].paymentRecords) empsAll[idx].paymentRecords=[];
@@ -1926,16 +1992,15 @@ function submitEmailConfirm(empId,token,period,amount){
   saveEmps(empsAll);
 
   // Show success screen
-  document.body.innerHTML=`
-  <div style="font-family:'Poppins','Helvetica Neue',Arial,sans-serif;background:linear-gradient(135deg,#51897d,#2f4f4f);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;">
-    <div style="background:#fff;border-radius:20px;box-shadow:0 8px 40px rgba(0,0,0,0.2);max-width:440px;width:100%;padding:40px;text-align:center;">
-      <div style="font-size:64px;margin-bottom:16px;">✅</div>
-      <h1 style="font-size:22px;font-weight:700;color:#1e3333;margin-bottom:8px;">Payment Confirmed!</h1>
-      <p style="color:#6b8c8c;font-size:14px;line-height:1.6;margin-bottom:20px;">Your receipt of <strong>₱${parseFloat(amount||0).toFixed(2)}</strong> via ${methodLabel} has been recorded.</p>
-      <div style="background:#f0f5f4;border-radius:10px;padding:14px;font-size:12px;color:#6b8c8c;margin-bottom:20px;">Confirmed: ${confirmedAt}</div>
-      <p style="font-size:12px;color:#6b8c8c;">Thank you, <strong>${empsAll[idx].name}</strong>. Your confirmation has been saved. You may close this window.</p>
-    </div>
-  </div>`;
+  document.body.style.cssText = 'font-family:Poppins,Arial,sans-serif;background:linear-gradient(135deg,#51897d,#2f4f4f);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;margin:0;';
+  document.body.innerHTML =
+    '<div style="background:#fff;border-radius:20px;box-shadow:0 8px 40px rgba(0,0,0,0.2);max-width:440px;width:100%;padding:40px;text-align:center;">'
+    +'<div style="font-size:64px;margin-bottom:16px;">&#9989;</div>'
+    +'<h1 style="font-size:22px;font-weight:700;color:#1e3333;margin-bottom:8px;">Payment Confirmed!</h1>'
+    +'<p style="color:#6b8c8c;font-size:14px;line-height:1.6;margin-bottom:20px;">Your receipt of <strong>P'+parseFloat(amount||0).toFixed(2)+'</strong> via '+methodLabel+' has been recorded.</p>'
+    +'<div style="background:#f0f5f4;border-radius:10px;padding:14px;font-size:12px;color:#6b8c8c;margin-bottom:20px;">Confirmed: '+confirmedAt+'</div>'
+    +'<p style="font-size:12px;color:#6b8c8c;">Thank you, <strong>'+empsAll[idx].name+'</strong>. Your confirmation has been saved. You may close this window.</p>'
+    +'</div>';
 }
 
 
