@@ -456,7 +456,13 @@ tr:hover td{background:rgba(255,255,255,0.02);}
 
     <!-- REPORTS -->
     <div class="page" id="page-reports">
-      <div class="section-header"><h2 class="section-title">Reports & Analytics</h2></div>
+      <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <h2 class="section-title">Reports & Analytics</h2>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span id="rep-sync-status" style="font-size:11px;color:var(--muted);"></span>
+          <button class="btn" id="rep-refresh-btn" onclick="syncAndRenderReport()" style="font-size:12px;padding:7px 14px;background:rgba(81,137,125,0.08);border-color:rgba(81,137,125,0.2);color:var(--teal);font-weight:600;">🔄 Sync & Refresh</button>
+        </div>
+      </div>
       <div class="report-controls">
         <div>
           <label class="fl" style="margin-bottom:5px">Report Type</label>
@@ -883,6 +889,15 @@ async function syncFromGAS(){
 
     showSyncBanner('✅ Records synced — '+new Date().toLocaleTimeString('en-PH',{timeZone:'Asia/Manila'}), 3000);
     renderKiosk(); renderDashboard(); renderEmpManage();
+    populateReportFilter(); populateAttFilter();
+    // Re-render report if it's currently visible
+    if(document.getElementById('page-reports')&&document.getElementById('page-reports').classList.contains('active')){
+      renderReport();
+    }
+    // Re-render attendance if visible
+    if(document.getElementById('page-attendance')&&document.getElementById('page-attendance').classList.contains('active')){
+      renderAttendance();
+    }
   } catch(e){
     showSyncBanner('⚠ Sync failed: '+e.message+' — working offline', 4000);
   }
@@ -1058,12 +1073,111 @@ function showAdminPage(p){
   document.querySelectorAll('.nav-tab').forEach(x=>x.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   document.getElementById('tab-'+p).classList.add('active');
-  if(p==='dashboard') renderDashboard();
-  if(p==='employees') renderEmpManage();
-  if(p==='bonus') renderBonusPage();
-  if(p==='reports'){ populateReportFilter(); renderReport(); }
-  if(p==='attendance'){ populateAttFilter(); const t=todayPH(); document.getElementById('att-from').value=t; document.getElementById('att-to').value=t; renderAttendance(); }
-  if(p==='settings'){ updateGasStatus(); }
+  if(p==='dashboard')  { syncThenRender(renderDashboard); }
+  if(p==='employees')  { syncThenRender(renderEmpManage); }
+  if(p==='bonus')      { syncThenRender(renderBonusPage); }
+  if(p==='reports')    { syncThenRender(function(){
+    populateReportFilter(); renderReport();
+    const ts = ls('_tt_last_sync');
+    const st = document.getElementById('rep-sync-status');
+    if(st && ts) st.textContent = '✅ Last synced: '+ts;
+  }); }
+  if(p==='attendance') { syncThenRender(function(){
+    populateAttFilter();
+    const t=todayPH();
+    document.getElementById('att-from').value=t;
+    document.getElementById('att-to').value=t;
+    renderAttendance();
+  }); }
+  if(p==='settings')   { updateGasStatus(); }
+}
+
+// Sync from GAS if connected, then run the render function
+async function syncThenRender(renderFn){
+  if(!hasGas()){ renderFn(); return; }
+  showSyncBanner('⏳ Loading from Google Sheets…');
+  try {
+    const r = await gasCall('getTTData',{});
+    if(r && r.ok){
+
+      // ── Employees: full replace ──
+      if(Array.isArray(r.employees) && r.employees.length){
+        const emps = r.employees.map(function(e){
+          return {
+            id:        String(e.id||e.ID||''),
+            name:      String(e.name||e.Name||''),
+            role:      String(e.role||e.Role||''),
+            email:     String(e.email||e.Email||''),
+            startDate: String(e.start_date||e['Start Date']||''),
+            shiftStart:String(e.shift_start||e['Shift Start']||'10:00'),
+            shiftEnd:  String(e.shift_end||e['Shift End']||'18:00'),
+            rate:      parseFloat(e.rate||e.Rate)||0,
+            payPeriod: String(e.pay_period||e['Pay Period']||'semimonthly'),
+            color:     String(e.color||e.Color||'av1'),
+            active:    String(e.active||e.Active||'true')==='false'?false:true,
+            history:   (function(){ try{return JSON.parse(String(e.history_json||e['History JSON']||'[]'));}catch(ex){return [];} })()
+          };
+        }).filter(function(e){ return e.id && e.name; });
+        ss('tc_employees', JSON.stringify(emps));
+      }
+
+      // ── Logs: full replace from Sheets ──
+      if(Array.isArray(r.logs)){
+        const logs = r.logs.map(function(l){
+          return {
+            id:    String(l.id||l.ID||''),
+            empId: String(l.emp_id||l['Emp ID']||''),
+            date:  String(l.date||l.Date||''),
+            time:  String(l.time||l.Time||''),
+            type:  String(l.type||l.Type||'in'),
+            manual:String(l.manual||l.Manual||'')==='true',
+            note:  String(l.note||l.Note||'')
+          };
+        }).filter(function(l){ return l.id && l.empId && l.date; });
+        ss('tc_logs', JSON.stringify(logs));
+        _lastSavedLogIds = new Set(logs.map(function(l){ return l.id; }));
+      }
+
+      // ── Bonuses: full replace from Sheets ──
+      if(Array.isArray(r.bonuses)){
+        const bonuses = r.bonuses.map(function(b){
+          return {
+            id:     String(b.id||b.ID||''),
+            empId:  String(b.emp_id||b['Emp ID']||''),
+            date:   String(b.date||b.Date||''),
+            type:   String(b.type||b.Type||''),
+            task:   String(b.task||b.Task||''),
+            amount: parseFloat(b.amount||b.Amount)||0
+          };
+        }).filter(function(b){ return b.id && b.empId; });
+        ss('tc_bonuses', JSON.stringify(bonuses));
+        _lastSavedBonusIds = new Set(bonuses.map(function(b){ return b.id; }));
+      }
+
+      const ts = new Date().toLocaleTimeString('en-PH',{timeZone:'Asia/Manila'});
+      ss('_tt_last_sync', ts);
+      showSyncBanner('✅ Synced from Google Sheets — '+ts, 2500);
+    } else {
+      showSyncBanner('⚠ Could not load from Sheets: '+(r&&r.error?r.error:'unknown')+'  — showing local data', 4000);
+    }
+  } catch(e){
+    showSyncBanner('⚠ Offline — showing local data ('+e.message+')', 3000);
+  }
+  renderFn();
+}
+
+async function syncAndRenderReport(){
+  const btn = document.getElementById('rep-refresh-btn');
+  const st  = document.getElementById('rep-sync-status');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Syncing…'; }
+  if(st)  st.textContent = '';
+  await syncThenRender(function(){
+    populateReportFilter();
+    renderReport();
+    const ts = ls('_tt_last_sync') || new Date().toLocaleTimeString('en-PH',{timeZone:'Asia/Manila'});
+    if(st) st.textContent = '✅ Last synced: '+ts;
+    if(btn){ btn.disabled=false; btn.textContent='🔄 Sync & Refresh'; }
+  });
 }
 
 // ── DASHBOARD ──
@@ -2103,11 +2217,16 @@ function showToast(msg,type='info'){
 // INIT
 // ══════════════════════════════════
 document.addEventListener('DOMContentLoaded',()=>{
-  initData(); startClocks(); renderKiosk();
+  initData(); startClocks();
+  // Sync from Sheets first so kiosk shows real employees on any browser
+  if(hasGas()){
+    syncThenRender(renderKiosk);
+  } else {
+    renderKiosk();
+  }
   document.getElementById('reportDate').value=todayPH();
   document.getElementById('reportFrom').value=todayPH();
   document.getElementById('reportTo').value=todayPH();
-  // Auto-sync from Google Sheets if URL is configured
   if(hasGas()) syncFromGAS();
 
   // ── Handle ?confirmPay= URL param (employee clicked confirm button in email) ──
