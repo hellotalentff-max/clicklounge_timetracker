@@ -1223,7 +1223,7 @@ function renderEmpManage(){
   const emps=getEmps();
   let h='';
   emps.forEach((e,i)=>{
-    const since=e.startDate?new Date(e.startDate).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'}):'-';
+    const since=e.startDate?new Date(e.startDate+'T00:00:00').toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric',timeZone:'Asia/Manila'}):'-';
     h+=`<div class="emp-row">
       <div class="emp-info"><div class="emp-av ${e.color||avFor(i)}">${e.name[0]}</div>
       <div><div class="emp-name">${e.name}</div>
