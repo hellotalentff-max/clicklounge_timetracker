@@ -1496,7 +1496,8 @@ function emailPayrollReport(){
     const bonus=bonuses.filter(b=>b.empId===e.id&&b.date>=s&&b.date<=e2).reduce((a,b2)=>a+b2.amount,0);
     const gross=reg+bonus;
     const token=btoa(`${e.id}|${s}|${e2}|${gross.toFixed(2)}`).replace(/=/g,'');
-    const confirmUrl=`${APP_URL}?confirmPay=${token}&empId=${e.id}&period=${s}_${e2}&amount=${gross.toFixed(2)}`;
+    const gasParam = getGasUrl() ? '&gas='+encodeURIComponent(getGasUrl()) : '';
+    const confirmUrl=`${APP_URL}?confirmPay=${token}&empId=${e.id}&period=${s}_${e2}&amount=${gross.toFixed(2)}${gasParam}`;
     return {e,days,tot,reg,bonus,gross,token,confirmUrl};
   });
 
@@ -2086,6 +2087,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   const confirmEmpId=params.get('empId');
   const confirmPeriod=params.get('period');   // format: "from_to"
   const confirmAmt=params.get('amount');
+  const confirmGasUrl=params.get('gas')||getGasUrl();
 
   if(confirmToken && confirmEmpId){
     const empsAll=getEmps();
@@ -2169,51 +2171,98 @@ function showConfirmScreen(emp, token, period, amt, alreadyConfirmed, pending){
 }
 
 function submitEmailConfirm(empId,token,period,amount){
-  const ack=document.getElementById('conf-ack');
-  const method=document.getElementById('conf-method').value;
-  const ref=(document.getElementById('conf-ref').value||'').trim();
-  if(!ack||!ack.checked){ alert('Please check the acknowledgement checkbox to confirm.'); return; }
-  if(!method){ alert('Please select your payment method (Cash, GCash, or Bank Transfer).'); return; }
+  const ack    = document.getElementById('conf-ack');
+  const method = document.getElementById('conf-method').value;
+  const ref    = (document.getElementById('conf-ref')?.value||'').trim();
+  if(!ack||!ack.checked){ alert('Please tick the acknowledgement checkbox first.'); return; }
+  if(!method){ alert('Please select your payment method — Cash, GCash, or Bank Transfer.'); return; }
 
-  const empsAll=getEmps();
-  const idx=empsAll.findIndex(e=>e.id===empId);
-  if(idx===-1){ alert('Error: Employee record not found.'); return; }
+  const methodLabel = {'cash':'💵 Cash','gcash':'📱 GCash','bank':'🏦 Bank Transfer'}[method]||method;
+  const refNote     = ref?' · Ref: '+ref:'';
+  const confirmedAt = new Date().toLocaleString('en-PH',{timeZone:'Asia/Manila'});
+  const todayDate   = new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'});
 
-  const methodLabel={'cash':'💵 Cash','gcash':'📱 GCash','bank':'🏦 Bank Transfer'}[method]||method;
-  const refNote=ref?' - Ref: '+ref:'';
-  const confirmedAt=new Date().toLocaleString('en-PH',{timeZone:'Asia/Manila'});
+  // ── 1. Get GAS URL from URL params (embedded by admin when sending email) ──
+  const gasUrl = new URLSearchParams(window.location.search).get('gas') || getGasUrl();
 
-  // Update pending confirmation
-  if(!empsAll[idx].pendingConfirmations) empsAll[idx].pendingConfirmations=[];
-  const pcIdx=empsAll[idx].pendingConfirmations.findIndex(p=>p.token===token);
-  if(pcIdx>-1){
-    empsAll[idx].pendingConfirmations[pcIdx].confirmed=true;
-    empsAll[idx].pendingConfirmations[pcIdx].confirmedAt=confirmedAt;
-    empsAll[idx].pendingConfirmations[pcIdx].method=method;
-    empsAll[idx].pendingConfirmations[pcIdx].ref=ref;
+  // Disable the confirm button to prevent double-submit
+  const btn = document.querySelector('button[onclick*="submitEmailConfirm"]');
+  if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
+
+  // ── 2. Post directly to Google Sheets via GAS ──
+  function postToGAS(url, payload){
+    return new Promise(function(resolve,reject){
+      if(!url){ reject(new Error('No GAS URL — confirmation saved locally only')); return; }
+      const cb  = '_ttc_'+Math.random().toString(36).slice(2);
+      const obj = { action:'saveTTPayment', payload };
+      const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+      const timer = setTimeout(()=>{ delete window[cb]; reject(new Error('Timed out')); }, 20000);
+      window[cb] = function(r){ clearTimeout(timer); delete window[cb]; resolve(r); };
+      const sc = document.createElement('script');
+      sc.src = url+'?d='+encodeURIComponent(b64)+'&callback='+cb;
+      sc.onerror = ()=>{ clearTimeout(timer); delete window[cb]; reject(new Error('Network error')); };
+      document.body.appendChild(sc);
+    });
   }
 
-  // Add to history
-  if(!empsAll[idx].history) empsAll[idx].history=[];
-  empsAll[idx].history.push({
-    date:new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'}),
-    note:'Salary confirmed - P'+parseFloat(amount||0).toFixed(2)+' via '+methodLabel+refNote+' Period: '+(period||'').replace('_',' to ')+' Confirmed: '+confirmedAt
-  });
-  // Store payment record
-  if(!empsAll[idx].paymentRecords) empsAll[idx].paymentRecords=[];
-  empsAll[idx].paymentRecords.push({ date:new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'}), period:(period||'').replace('_','|'), amount:parseFloat(amount||0), method, ref, confirmedAt, confirmedByEmployee:true });
-  saveEmps(empsAll);
+  const paymentRecord = {
+    id:                 'PAY-'+Date.now(),
+    empId:              empId,
+    date:               todayDate,
+    from:               (period||'').split('_')[0]||'',
+    to:                 (period||'').split('_')[1]||'',
+    amount:             parseFloat(amount||0),
+    method:             method,
+    ref:                ref,
+    notes:              '',
+    confirmedAt:        confirmedAt,
+    confirmedByEmployee: true
+  };
 
-  // Show success screen
-  document.body.style.cssText = 'font-family:Poppins,Arial,sans-serif;background:linear-gradient(135deg,#51897d,#2f4f4f);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;margin:0;';
-  document.body.innerHTML =
-    '<div style="background:#fff;border-radius:20px;box-shadow:0 8px 40px rgba(0,0,0,0.2);max-width:440px;width:100%;padding:40px;text-align:center;">'
-    +'<div style="font-size:64px;margin-bottom:16px;">&#9989;</div>'
-    +'<h1 style="font-size:22px;font-weight:700;color:#1e3333;margin-bottom:8px;">Payment Confirmed!</h1>'
-    +'<p style="color:#6b8c8c;font-size:14px;line-height:1.6;margin-bottom:20px;">Your receipt of <strong>P'+parseFloat(amount||0).toFixed(2)+'</strong> via '+methodLabel+' has been recorded.</p>'
-    +'<div style="background:#f0f5f4;border-radius:10px;padding:14px;font-size:12px;color:#6b8c8c;margin-bottom:20px;">Confirmed: '+confirmedAt+'</div>'
-    +'<p style="font-size:12px;color:#6b8c8c;">Thank you, <strong>'+empsAll[idx].name+'</strong>. Your confirmation has been saved. You may close this window.</p>'
-    +'</div>';
+  const histNote = '✅ Salary CONFIRMED — ₱'+parseFloat(amount||0).toFixed(2)+' via '+methodLabel+refNote+' · Period: '+(period||'').replace('_',' to ')+' · Confirmed: '+confirmedAt;
+
+  // Show saving state
+  const confBox = document.getElementById('_confirmFormWrap');
+  if(confBox) confBox.innerHTML = '<div style="text-align:center;padding:20px;color:#6b8c8c;font-size:13px;">⏳ Saving confirmation…</div>';
+
+  postToGAS(gasUrl, paymentRecord)
+    .then(function(r){
+      if(!r.ok) throw new Error(r.error||'GAS returned not ok');
+      showSuccess(true);
+    })
+    .catch(function(err){
+      // GAS call failed — save to localStorage as fallback
+      console.warn('GAS save failed, saving locally:', err.message);
+      try {
+        const empsAll = getEmps();
+        const idx = empsAll.findIndex(function(e){ return e.id===empId; });
+        if(idx>-1){
+          if(!empsAll[idx].history) empsAll[idx].history=[];
+          empsAll[idx].history.push({ date:todayDate, note:histNote });
+          if(!empsAll[idx].paymentRecords) empsAll[idx].paymentRecords=[];
+          empsAll[idx].paymentRecords.push(paymentRecord);
+          saveEmps(empsAll);
+        }
+      } catch(ex) {}
+      showSuccess(false, err.message);
+    });
+
+  function showSuccess(synced, errMsg){
+    const empName = (function(){ try{ return getEmps().find(function(e){return e.id===empId;})||{name:''}; }catch(e){ return {name:''}; } })().name || '';
+    document.body.style.cssText = 'font-family:Poppins,Arial,sans-serif;background:linear-gradient(135deg,#51897d,#2f4f4f);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;margin:0;';
+    document.body.innerHTML =
+      '<div style="background:#fff;border-radius:20px;box-shadow:0 8px 40px rgba(0,0,0,0.2);max-width:440px;width:100%;padding:40px;text-align:center;">'
+      +'<div style="font-size:64px;margin-bottom:16px;">✅</div>'
+      +'<h1 style="font-size:22px;font-weight:700;color:#1e3333;margin-bottom:8px;">Payment Confirmed!</h1>'
+      +'<p style="color:#6b8c8c;font-size:14px;line-height:1.6;margin-bottom:16px;">Your receipt of <strong>₱'+parseFloat(amount||0).toFixed(2)+'</strong> via '+methodLabel+refNote+' has been recorded.</p>'
+      +'<div style="background:#f0f5f4;border-radius:10px;padding:14px;font-size:12px;color:#6b8c8c;margin-bottom:16px;">'+confirmedAt+'</div>'
+      +(synced
+        ? '<div style="background:rgba(81,137,125,0.08);border:1px solid rgba(81,137,125,0.2);border-radius:8px;padding:10px;font-size:12px;color:#2f4f4f;margin-bottom:16px;">☁ Saved to Google Sheets — admin will see this confirmation.</div>'
+        : '<div style="background:rgba(215,144,104,0.08);border:1px solid rgba(215,144,104,0.25);border-radius:8px;padding:10px;font-size:12px;color:#7a4a20;margin-bottom:16px;">⚠ Could not reach server ('+errMsg+'). Please tell your manager you confirmed.</div>'
+      )
+      +'<p style="font-size:12px;color:#6b8c8c;">Thank you'+(empName?', <strong>'+empName+'</strong>':'')+'. You may close this window.</p>'
+      +'</div>';
+  }
 }
 
 
