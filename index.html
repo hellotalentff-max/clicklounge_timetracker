@@ -783,10 +783,16 @@ const saveBonuses=v => { ss('tc_bonuses',JSON.stringify(v)); _pushBonusesToGAS(v
 
 // ── GAS Sync Layer ──
 const GAS_URL_KEY = 'tc_gas_url';
+
+// ── Hardcode your Time Tracker Apps Script URL here ──
+// Data syncs automatically on every browser without any setup.
+// Paste your deployed web app URL between the quotes below.
+const HARDCODED_GAS_URL = '';  // ← paste URL here
+
+function getGasUrl(){ return ls(GAS_URL_KEY) || HARDCODED_GAS_URL || ''; }
+function hasGas(){ return !!getGasUrl(); }
 let _lastSavedLogIds = new Set((JSON.parse(ls('tc_logs')||'[]')).map(l=>l.id));
 let _lastSavedBonusIds = new Set((JSON.parse(ls('tc_bonuses')||'[]')).map(b=>b.id));
-function getGasUrl(){ return ls(GAS_URL_KEY)||''; }
-function hasGas(){ return !!getGasUrl(); }
 function _pushEmpsToGAS(v){ if(hasGas()) v.forEach(e=>gasCall('saveTTEmployee',e).catch(()=>{})); }
 function _pushLogsToGAS(v){ if(!hasGas()) return; v.forEach(l=>{ if(!_lastSavedLogIds.has(l.id)){ gasCall('saveTTLog',l).catch(()=>{}); _lastSavedLogIds.add(l.id); } }); }
 function _pushBonusesToGAS(v){ if(!hasGas()) return; v.forEach(b=>{ if(!_lastSavedBonusIds.has(b.id)){ gasCall('saveTTBonus',b).catch(()=>{}); _lastSavedBonusIds.add(b.id); } }); }
@@ -821,7 +827,14 @@ async function syncFromGAS(){
   showSyncBanner('⏳ Syncing records from Google Sheets…');
   try {
     const r = await gasCall('getTTData', {});
-    if(!r.ok) throw new Error(r.error||'Failed');
+    if(!r.ok){
+      if(r.error && r.error.includes('Unknown action')){
+        showSyncBanner('⚠ Code.gs needs to be redeployed as a New Version to enable sync.',6000);
+      } else {
+        showSyncBanner('⚠ Sync error: '+(r.error||'Unknown')+'.',5000);
+      }
+      return;
+    }
 
     // Employees — merge (GAS is source of truth)
     if(Array.isArray(r.employees) && r.employees.length){
@@ -2000,15 +2013,31 @@ function deleteEntry(empId, date){
 // ══════════════════════════════════
 // SETTINGS & SYNC
 // ══════════════════════════════════
-function saveGasUrl(){
+async function saveGasUrl(){
   const url = (document.getElementById('gasUrlInput').value||'').trim();
   if(url && !url.startsWith('https://script.google.com')){
     showToast('URL must start with https://script.google.com','error'); return;
   }
   ss(GAS_URL_KEY, url);
   updateGasStatus();
-  if(url){ showToast('GAS URL saved — syncing now…','success'); syncFromGAS(); }
-  else showToast('GAS URL cleared','info');
+  if(!url){ showToast('GAS URL cleared','info'); return; }
+
+  // Test connection using a basic route (getAll exists in all versions)
+  showSyncBanner('🔌 Testing connection…');
+  try{
+    const r = await gasCall('ping',{});
+    if(r && (r.ok||r.message||r.data||r.status)){
+      showSyncBanner('✅ Connected! Click Sync Now to load records.',4000);
+      showToast('✅ Connected to Google Sheets','success');
+    } else {
+      showSyncBanner('✅ Connected. Click Sync Now to load records.',4000);
+      showToast('URL saved — click 🔄 Sync Now','success');
+    }
+  }catch(e){
+    // Connection test failed — the URL works but may need Code.gs redeployed
+    showSyncBanner('⚠ URL saved but could not connect: '+e.message+'. Make sure Code.gs is deployed as a new version.',6000);
+    showToast('URL saved — deploy Code.gs as new version, then try Sync','info');
+  }
 }
 function clearGasUrl(){ ss(GAS_URL_KEY,''); updateGasStatus(); showToast('Disconnected from Google Sheets','info'); }
 function updateGasStatus(){
