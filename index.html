@@ -346,7 +346,8 @@ tr:hover td{background:rgba(255,255,255,0.02);}
 <div id="adminPinOverlay">
   <div class="pin-box">
     <div class="pin-eyebrow">TimeCommand</div>
-    <div class="pin-title">Admin Access</div>
+    <div class="pin-title">Staff Access</div>
+    <div style="font-size:12px;color:var(--muted2);margin-bottom:24px;">Enter Admin or OIC PIN</div>
     <div class="pin-sub">Enter your 4-digit PIN to continue</div>
     <div class="pin-dots">
       <div class="pin-dot" id="pd0"></div><div class="pin-dot" id="pd1"></div>
@@ -532,6 +533,18 @@ tr:hover td{background:rgba(255,255,255,0.02);}
           <button class="btn btn-primary" onclick="exportBackup()">⬇ Export Backup</button>
           <label class="btn" style="cursor:pointer;">📂 Restore Backup<input type="file" accept=".json" style="display:none;" onchange="importBackup(this)"></label>
         </div>
+      </div>
+
+      <!-- OIC PIN -->
+      <div class="card">
+        <div class="card-eyebrow">🔑 OIC Access PIN</div>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6;">Staff with OIC access can view Dashboard and manage Employees only. They cannot access Bonus, Reports, or Settings.</p>
+        <div class="fg">
+          <label class="fl">OIC PIN (4 digits)</label>
+          <input class="fi" id="oic-pin-input" type="password" maxlength="4" placeholder="1234" style="width:120px;letter-spacing:4px;font-size:18px;text-align:center;">
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Current OIC PIN: <span id="oic-pin-display">••••</span></div>
+        <button class="btn btn-primary" onclick="saveOICPin()">💾 Save OIC PIN</button>
       </div>
 
       <!-- Danger Zone -->
@@ -761,6 +774,9 @@ tr:hover td{background:rgba(255,255,255,0.02);}
 // CONFIG
 // ══════════════════════════════════
 const ADMIN_PIN = '5378';
+const OIC_PIN   = ls('tc_oic_pin') || '1234'; // OIC default PIN — change in Settings
+
+let CURRENT_ACCESS = 'none'; // 'admin' | 'oic' | 'none'
 const AV = ['av1','av2','av3','av4','av5','av6','av7','av8'];
 const avFor = i => AV[i % AV.length];
 
@@ -1095,16 +1111,60 @@ function pinBack(){ pinInput=pinInput.slice(0,-1); updatePinDots(); }
 function pinClear(){ pinInput=''; updatePinDots(); }
 function updatePinDots(){ for(let i=0;i<4;i++)document.getElementById('pd'+i).classList.toggle('filled',i<pinInput.length); }
 function checkPin(){
-  if(pinInput===ADMIN_PIN){ closeAdminPin(); openAdminPanel(); }
-  else{ document.getElementById('pinError').textContent='Incorrect PIN. Try again.'; pinInput=''; updatePinDots(); setTimeout(()=>document.getElementById('pinError').textContent='',2000); }
+  const oicPin = ls('tc_oic_pin')||'1234';
+  if(pinInput===ADMIN_PIN){
+    CURRENT_ACCESS='admin';
+    closeAdminPin();
+    openAdminPanel();
+  } else if(pinInput===oicPin){
+    CURRENT_ACCESS='oic';
+    closeAdminPin();
+    openOICPanel();
+  } else {
+    document.getElementById('pinError').textContent='Incorrect PIN. Try again.';
+    pinInput=''; updatePinDots();
+    setTimeout(()=>document.getElementById('pinError').textContent='',2000);
+  }
 }
 
 // ══════════════════════════════════
-// ADMIN PANEL
+// OIC ACCESS — Dashboard + Employees only
 // ══════════════════════════════════
+function openOICPanel(){
+  document.getElementById('kioskScreen').style.display='none';
+  document.getElementById('adminPanel').style.display='flex';
+  // Hide restricted tabs for OIC
+  const restricted = ['bonus','reports','settings','attendance'];
+  restricted.forEach(function(tab){
+    const t=document.getElementById('tab-'+tab);
+    if(t) t.style.display='none';
+  });
+  // Show OIC badge in header
+  const clockEl = document.getElementById('adminClock');
+  if(clockEl && !document.getElementById('oic-badge')){
+    clockEl.insertAdjacentHTML('beforebegin',
+      '<span id="oic-badge" style="background:var(--gold);color:#fff;font-size:10px;font-weight:700;padding:3px 10px;border-radius:8px;margin-right:10px;letter-spacing:1px;">OIC MODE</span>'
+    );
+  }
+  const t=todayPH();
+  document.getElementById('reportDate').value=t;
+  syncThenRender(function(){
+    renderDashboard(); renderEmpManage();
+    showAdminPage('dashboard');
+  });
+}
+
 function openAdminPanel(){
   document.getElementById('kioskScreen').style.display='none';
   document.getElementById('adminPanel').style.display='flex';
+  // Restore all tabs for full admin
+  ['bonus','reports','settings','attendance'].forEach(function(tab){
+    const t=document.getElementById('tab-'+tab);
+    if(t) t.style.display='';
+  });
+  // Remove OIC badge if present
+  const badge=document.getElementById('oic-badge');
+  if(badge) badge.remove();
   const t=todayPH();
   document.getElementById('reportDate').value=t;
   document.getElementById('reportFrom').value=t;
@@ -1112,11 +1172,24 @@ function openAdminPanel(){
   populateReportFilter(); renderDashboard(); renderEmpManage(); renderBonusPage(); renderReport();
 }
 function exitAdmin(){
+  CURRENT_ACCESS='none';
+  // Restore all tabs
+  ['bonus','reports','settings','attendance'].forEach(function(tab){
+    const t=document.getElementById('tab-'+tab);
+    if(t) t.style.display='';
+  });
+  const badge=document.getElementById('oic-badge');
+  if(badge) badge.remove();
   document.getElementById('adminPanel').style.display='none';
   document.getElementById('kioskScreen').style.display='flex';
   renderKiosk();
 }
 function showAdminPage(p){
+  // OIC access restriction
+  const oicRestricted = ['bonus','reports','settings'];
+  if(CURRENT_ACCESS==='oic' && oicRestricted.includes(p)){
+    notify('This section requires Admin access','error'); return;
+  }
   document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(x=>x.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
@@ -2170,6 +2243,17 @@ function deleteEntry(empId, date){
   renderAttendance();
   renderDashboard();
   showToast('Entries deleted','success');
+}
+
+function saveOICPin(){
+  const pin=(document.getElementById('oic-pin-input')?.value||'').trim();
+  if(!/^\d{4}$/.test(pin)){ showToast('PIN must be exactly 4 digits','error'); return; }
+  if(pin===ADMIN_PIN){ showToast('OIC PIN cannot be the same as Admin PIN','error'); return; }
+  ss('tc_oic_pin', pin);
+  const el=document.getElementById('oic-pin-display');
+  if(el) el.textContent='✅ Saved ('+pin.replace(/./g,'•')+')';
+  document.getElementById('oic-pin-input').value='';
+  showToast('✅ OIC PIN updated — share with your OIC staff','success');
 }
 
 // ══════════════════════════════════
