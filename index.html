@@ -803,20 +803,61 @@ function _pushEmpsToGAS(v){ if(hasGas()) v.forEach(e=>gasCall('saveTTEmployee',e
 function _pushLogsToGAS(v){ if(!hasGas()) return; v.forEach(l=>{ if(!_lastSavedLogIds.has(l.id)){ gasCall('saveTTLog',l).catch(()=>{}); _lastSavedLogIds.add(l.id); } }); }
 function _pushBonusesToGAS(v){ if(!hasGas()) return; v.forEach(b=>{ if(!_lastSavedBonusIds.has(b.id)){ gasCall('saveTTBonus',b).catch(()=>{}); _lastSavedBonusIds.add(b.id); } }); }
 
-function gasCall(action, payload){
-  return new Promise(function(resolve,reject){
-    const url = getGasUrl();
-    if(!url){ reject(new Error('No GAS URL')); return; }
-    const obj = { action, payload: payload||{} };
-    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
-    const cb  = '_tt_'+Math.random().toString(36).slice(2);
-    const timer = setTimeout(()=>{ delete window[cb]; try{document.body.removeChild(sc);}catch(e){} reject(new Error('Timeout')); }, 30000);
-    window[cb] = function(data){ clearTimeout(timer); delete window[cb]; try{document.body.removeChild(sc);}catch(e){} resolve(data); };
-    const sc = document.createElement('script');
-    sc.src = url+'?d='+encodeURIComponent(b64)+'&callback='+cb;
-    sc.onerror = ()=>{ clearTimeout(timer); delete window[cb]; reject(new Error('Network')); };
-    document.body.appendChild(sc);
-  });
+async function gasCall(action, payload){
+  const url = getGasUrl();
+  if(!url) throw new Error('No GAS URL configured');
+  const obj = { action, payload: payload||{} };
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+  const fetchUrl = url + '?d=' + encodeURIComponent(b64);
+
+  // Try fetch first (works when deployment access = Anyone)
+  try {
+    const res  = await fetch(fetchUrl, { redirect: 'follow' });
+    const text = await res.text();
+
+    // Detect login redirect (deployment set to "Anyone with Google account")
+    if(text.includes('<!DOCTYPE') || text.includes('<html') || text.includes('accounts.google')){
+      throw new Error('Deployment requires login — set "Who has access" to "Anyone" in Deploy settings');
+    }
+
+    // Parse JSON response
+    try {
+      return JSON.parse(text);
+    } catch(e) {
+      // Response might be wrapped in a callback (JSONP style) — strip it
+      const match = text.match(/^[^(]+\((.+)\)\s*;?\s*$/s);
+      if(match) return JSON.parse(match[1]);
+      throw new Error('Invalid response from server');
+    }
+  } catch(fetchErr){
+    // fetch failed (CORS blocked etc.) — fall back to JSONP
+    if(fetchErr.message.includes('Deployment requires login') ||
+       fetchErr.message.includes('No GAS URL')) throw fetchErr;
+
+    return new Promise(function(resolve, reject){
+      const cb    = '_tt_'+Math.random().toString(36).slice(2);
+      const timer = setTimeout(()=>{
+        delete window[cb];
+        try{ document.body.removeChild(sc); }catch(e){}
+        reject(new Error('Timed out — check GAS URL and deployment settings'));
+      }, 20000);
+      window[cb] = function(data){
+        clearTimeout(timer);
+        delete window[cb];
+        try{ document.body.removeChild(sc); }catch(e){}
+        resolve(data);
+      };
+      const sc = document.createElement('script');
+      sc.src = fetchUrl + '&callback=' + cb;
+      sc.onerror = function(){
+        clearTimeout(timer);
+        delete window[cb];
+        try{ document.body.removeChild(sc); }catch(e){}
+        reject(new Error('Could not reach server — check the Apps Script URL and set access to "Anyone"'));
+      };
+      document.body.appendChild(sc);
+    });
+  }
 }
 
 // Push a single record — fire and forget, localStorage already updated
@@ -2135,22 +2176,18 @@ async function saveGasUrl(){
   ss(GAS_URL_KEY, url);
   updateGasStatus();
   if(!url){ showToast('GAS URL cleared','info'); return; }
-
-  // Test connection using a basic route (getAll exists in all versions)
   showSyncBanner('🔌 Testing connection…');
   try{
     const r = await gasCall('ping',{});
-    if(r && (r.ok||r.message||r.data||r.status)){
-      showSyncBanner('✅ Connected! Click Sync Now to load records.',4000);
-      showToast('✅ Connected to Google Sheets','success');
+    if(r && r.ok){
+      showSyncBanner('✅ Connected to Google Sheets! Click Sync Now to load records.', 4000);
+      showToast('✅ Connected','success');
     } else {
-      showSyncBanner('✅ Connected. Click Sync Now to load records.',4000);
-      showToast('URL saved — click 🔄 Sync Now','success');
+      showSyncBanner('⚠ Reached server but got error: '+(r&&r.error||'unknown'), 5000);
     }
-  }catch(e){
-    // Connection test failed — the URL works but may need Code.gs redeployed
-    showSyncBanner('⚠ URL saved but could not connect: '+e.message+'. Make sure Code.gs is deployed as a new version.',6000);
-    showToast('URL saved — deploy Code.gs as new version, then try Sync','info');
+  } catch(e){
+    showSyncBanner('⚠ Could not connect: '+e.message, 6000);
+    showToast('Connection failed — check deployment settings','error');
   }
 }
 function clearGasUrl(){ ss(GAS_URL_KEY,''); updateGasStatus(); showToast('Disconnected from Google Sheets','info'); }
