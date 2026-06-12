@@ -774,7 +774,7 @@ tr:hover td{background:rgba(255,255,255,0.02);}
 // CONFIG
 // ══════════════════════════════════
 const ADMIN_PIN = '5378';
-const OIC_PIN   = ls('tc_oic_pin') || '1234'; // OIC default PIN — change in Settings
+function getOICPin(){ return ls('tc_oic_pin') || '1234'; }
 
 let CURRENT_ACCESS = 'none'; // 'admin' | 'oic' | 'none'
 const AV = ['av1','av2','av3','av4','av5','av6','av7','av8'];
@@ -1111,7 +1111,7 @@ function pinBack(){ pinInput=pinInput.slice(0,-1); updatePinDots(); }
 function pinClear(){ pinInput=''; updatePinDots(); }
 function updatePinDots(){ for(let i=0;i<4;i++)document.getElementById('pd'+i).classList.toggle('filled',i<pinInput.length); }
 function checkPin(){
-  const oicPin = ls('tc_oic_pin')||'1234';
+  const oicPin = getOICPin();
   if(pinInput===ADMIN_PIN){
     CURRENT_ACCESS='admin';
     closeAdminPin();
