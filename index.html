@@ -768,15 +768,11 @@ const avFor = i => AV[i % AV.length];
 // STORAGE
 // ══════════════════════════════════
 function initData(){
-  if(!ls('tc_employees')){
-    ss('tc_employees', JSON.stringify([
-      { id:'e1', name:'Maria Santos',   role:'Cashier',         email:'maria@cls.com',  startDate:'2024-01-15', shiftStart:'10:00', shiftEnd:'18:00', rate:80,  payPeriod:'semimonthly', color:'av1', active:true, history:[{date:'2024-01-15',note:'Joined as Cashier'}] },
-      { id:'e2', name:'Juan dela Cruz', role:'Supervisor',      email:'juan@cls.com',   startDate:'2023-06-01', shiftStart:'10:00', shiftEnd:'18:00', rate:120, payPeriod:'semimonthly', color:'av2', active:true, history:[{date:'2023-06-01',note:'Joined as Sales Associate'},{date:'2024-03-01',note:'Promoted to Supervisor'}] },
-      { id:'e3', name:'Ana Reyes',      role:'Sales Associate', email:'ana@cls.com',     startDate:'2024-09-10', shiftStart:'10:00', shiftEnd:'18:00', rate:80,  payPeriod:'weekly',      color:'av3', active:true, history:[{date:'2024-09-10',note:'Joined as Sales Associate'}] },
-    ]));
-  }
-  if(!ls('tc_logs'))    ss('tc_logs',   JSON.stringify([]));
-  if(!ls('tc_bonuses')) ss('tc_bonuses',JSON.stringify([]));
+  // Do NOT pre-populate sample employees — real employees come from GAS sync.
+  // Only initialise empty arrays if nothing exists yet.
+  if(!ls('tc_employees')) ss('tc_employees', JSON.stringify([]));
+  if(!ls('tc_logs'))      ss('tc_logs',      JSON.stringify([]));
+  if(!ls('tc_bonuses'))   ss('tc_bonuses',   JSON.stringify([]));
 }
 const ls = k => localStorage.getItem(k);
 const ss = (k,v) => localStorage.setItem(k,v);
@@ -1039,7 +1035,18 @@ function renderKiosk(){
       ${pill}${hrsNote}
     </div>`;
   });
-  document.getElementById('kioskGrid').innerHTML=html||'<div style="text-align:center;color:var(--muted);padding:48px;grid-column:1/-1">No employees registered. Ask admin to add profiles.</div>';
+  const emptyMsg = hasGas()
+    ? '<div style="text-align:center;color:var(--muted);padding:48px;grid-column:1/-1;">'+
+        '<div style="font-size:32px;margin-bottom:12px;">⏳</div>'+
+        '<div style="font-size:15px;font-weight:600;margin-bottom:6px;">Loading employees…</div>'+
+        '<div style="font-size:12px;">Syncing from Google Sheets. Please wait a moment.</div>'+
+      '</div>'
+    : '<div style="text-align:center;color:var(--muted);padding:48px;grid-column:1/-1;">'+
+        '<div style="font-size:32px;margin-bottom:12px;">👤</div>'+
+        '<div style="font-size:15px;font-weight:600;margin-bottom:6px;">No employees set up yet</div>'+
+        '<div style="font-size:12px;">Go to Admin → Employees to add staff profiles.</div>'+
+      '</div>';
+  document.getElementById('kioskGrid').innerHTML=html||emptyMsg;
 }
 
 let pendingEmpId=null;
@@ -2255,18 +2262,11 @@ function showToast(msg,type='info'){
 // ══════════════════════════════════
 document.addEventListener('DOMContentLoaded',()=>{
   initData(); startClocks();
-  // Sync from Sheets first so kiosk shows real employees on any browser
-  if(hasGas()){
-    syncThenRender(renderKiosk);
-  } else {
-    renderKiosk();
-  }
   document.getElementById('reportDate').value=todayPH();
   document.getElementById('reportFrom').value=todayPH();
   document.getElementById('reportTo').value=todayPH();
-  if(hasGas()) syncFromGAS();
 
-  // ── Handle ?confirmPay= URL param (employee clicked confirm button in email) ──
+  // ── Handle ?confirmPay= URL param first ──
   const params=new URLSearchParams(window.location.search);
   const confirmToken=params.get('confirmPay');
   const confirmEmpId=params.get('empId');
@@ -2295,6 +2295,17 @@ document.addEventListener('DOMContentLoaded',()=>{
         +'<h2 style="margin:12px 0 8px;color:#1e3333;">Invalid Link</h2>'
         +'<p style="color:#6b8c8c;font-size:13px;">This confirmation link is invalid or has expired. Please contact your manager.</p>'
         +'</div>';
+    }
+  }
+
+  // ── Normal startup: show loading state then sync real employees from Sheets ──
+  if(!confirmToken){
+    renderKiosk(); // shows ⏳ Loading if GAS configured, empty if not
+    if(hasGas()){
+      syncFromGAS().then(function(){
+        renderKiosk();
+        renderDashboard();
+      });
     }
   }
 });
