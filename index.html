@@ -411,11 +411,104 @@ tr:hover td{background:rgba(255,255,255,0.02);}
 
     <!-- EMPLOYEES -->
     <div class="page" id="page-employees">
-      <div class="section-header">
-        <h2 class="section-title">Employee Profiles</h2>
-        <button class="btn btn-primary" onclick="openAddEmp()">+ Add Employee</button>
+
+      <!-- OIC: simplified add-staff panel -->
+      <div id="oic-emp-panel" style="display:none;">
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-eyebrow">👤 Register Staff for Clocking</div>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6;">Add a new staff member so they can clock in and out on this device.</p>
+          <div class="fg">
+            <label class="fl">Staff Name *</label>
+            <input class="fi" id="oic-emp-name" placeholder="Full name e.g. Maria Santos">
+          </div>
+          <div class="fg">
+            <label class="fl">Role / Position</label>
+            <input class="fi" id="oic-emp-role" placeholder="e.g. Studio Assistant">
+          </div>
+          <button class="btn btn-primary" onclick="oicAddEmployee()" style="margin-top:4px;">+ Add to Clock-In List</button>
+        </div>
+
+        <!-- Notes / Incident Log -->
+        <div class="card">
+          <div class="card-eyebrow">📝 Incident Notes</div>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6;">Record when a staff member could not clock in or out due to network issues or other problems.</p>
+          <div class="fg">
+            <label class="fl">Staff Member</label>
+            <select class="fi" id="note-emp">
+              <option value="">— Select —</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label class="fl">Date & Time of Incident</label>
+            <div style="display:flex;gap:8px;">
+              <input class="fi" type="date" id="note-date" style="flex:1;">
+              <input class="fi" type="time" id="note-time" style="width:120px;">
+            </div>
+          </div>
+          <div class="fg">
+            <label class="fl">Type</label>
+            <select class="fi" id="note-type">
+              <option value="missed-clockin">⚠ Could not Clock In</option>
+              <option value="missed-clockout">⚠ Could not Clock Out</option>
+              <option value="network">📡 Network Issue</option>
+              <option value="device">📱 Device Problem</option>
+              <option value="other">📝 Other Incident</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label class="fl">Note / Details</label>
+            <input class="fi" id="note-detail" placeholder="e.g. No internet, clocked in at 10:00 AM manually observed">
+          </div>
+          <button class="btn btn-primary" onclick="saveIncidentNote()">💾 Save Note</button>
+
+          <!-- Saved notes list -->
+          <div id="notes-list" style="margin-top:16px;"></div>
+        </div>
       </div>
-      <div class="card"><div id="empManageList"></div></div>
+
+      <!-- Admin: full employee management -->
+      <div id="admin-emp-panel">
+        <div class="section-header">
+          <h2 class="section-title">Employee Profiles</h2>
+          <button class="btn btn-primary" onclick="openAddEmp()">+ Add Employee</button>
+        </div>
+        <div class="card"><div id="empManageList"></div></div>
+
+        <!-- Notes / Incident Log (also visible to admin) -->
+        <div class="card" style="margin-top:16px;">
+          <div class="card-eyebrow">📝 Incident Notes</div>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6;">Record when a staff member could not clock in or out due to network issues or other problems.</p>
+          <div class="fg">
+            <label class="fl">Staff Member</label>
+            <select class="fi" id="admin-note-emp">
+              <option value="">— Select —</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label class="fl">Date & Time of Incident</label>
+            <div style="display:flex;gap:8px;">
+              <input class="fi" type="date" id="admin-note-date" style="flex:1;">
+              <input class="fi" type="time" id="admin-note-time" style="width:120px;">
+            </div>
+          </div>
+          <div class="fg">
+            <label class="fl">Type</label>
+            <select class="fi" id="admin-note-type">
+              <option value="missed-clockin">⚠ Could not Clock In</option>
+              <option value="missed-clockout">⚠ Could not Clock Out</option>
+              <option value="network">📡 Network Issue</option>
+              <option value="device">📱 Device Problem</option>
+              <option value="other">📝 Other Incident</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label class="fl">Note / Details</label>
+            <input class="fi" id="admin-note-detail" placeholder="e.g. No internet, clocked in at 10:00 AM manually observed">
+          </div>
+          <button class="btn btn-primary" onclick="saveIncidentNote('admin')">💾 Save Note</button>
+          <div id="admin-notes-list" style="margin-top:16px;"></div>
+        </div>
+      </div>
     </div>
 
     <!-- BONUS & COMMISSION -->
@@ -1149,7 +1242,12 @@ function openOICPanel(){
   const t=todayPH();
   document.getElementById('reportDate').value=t;
   syncThenRender(function(){
-    renderDashboard(); renderEmpManage();
+    renderDashboard();
+    populateIncidentEmpDropdown();
+    renderIncidentNotes();
+    // Pre-fill note date/time
+    const nd=document.getElementById('note-date'); if(nd) nd.value=todayPH();
+    const nt=document.getElementById('note-time'); if(nt) nt.value=new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Manila'});
     showAdminPage('dashboard');
   });
 }
@@ -1195,7 +1293,21 @@ function showAdminPage(p){
   document.getElementById('page-'+p).classList.add('active');
   document.getElementById('tab-'+p).classList.add('active');
   if(p==='dashboard')  { syncThenRender(renderDashboard); }
-  if(p==='employees')  { syncThenRender(renderEmpManage); }
+  if(p==='employees'){
+    // Show OIC or Admin panel based on access
+    const oicP   = document.getElementById('oic-emp-panel');
+    const adminP = document.getElementById('admin-emp-panel');
+    if(CURRENT_ACCESS==='oic'){
+      if(oicP)   oicP.style.display='';
+      if(adminP) adminP.style.display='none';
+      populateIncidentEmpDropdown();
+      renderIncidentNotes();
+    } else {
+      if(oicP)   oicP.style.display='none';
+      if(adminP) adminP.style.display='';
+      syncThenRender(function(){ renderEmpManage(); populateIncidentEmpDropdown('admin'); renderIncidentNotes('admin'); });
+    }
+  }
   if(p==='bonus')      { syncThenRender(renderBonusPage); }
   if(p==='reports')    { syncThenRender(function(){
     populateReportFilter(); renderReport();
@@ -1301,7 +1413,118 @@ async function syncAndRenderReport(){
   });
 }
 
-// ── DASHBOARD ──
+// ══════════════════════════════════
+// OIC: Add employee (name only)
+// ══════════════════════════════════
+function oicAddEmployee(){
+  const name = (document.getElementById('oic-emp-name')?.value||'').trim();
+  const role = (document.getElementById('oic-emp-role')?.value||'').trim()||'Staff';
+  if(!name){ showToast('Enter a staff name','error'); return; }
+  // Check if already exists
+  const emps=getEmps();
+  if(emps.some(function(e){ return e.name.toLowerCase()===name.toLowerCase()&&e.active; })){
+    showToast(name+' is already in the system','info'); return;
+  }
+  const newEmp={
+    id:'emp_'+Date.now(), name, role,
+    email:'', startDate:todayPH(),
+    shiftStart:'09:00', shiftEnd:'18:00',
+    rate:0, payPeriod:'semimonthly',
+    color:'av1', active:true, history:[{date:todayPH(),note:'Added by OIC'}]
+  };
+  const updated=[...emps, newEmp];
+  saveEmps(updated);
+  document.getElementById('oic-emp-name').value='';
+  document.getElementById('oic-emp-role').value='';
+  populateIncidentEmpDropdown();
+  renderKiosk();
+  showToast('✅ '+name+' added — they can now clock in','success');
+}
+
+// ══════════════════════════════════
+// INCIDENT NOTES
+// ══════════════════════════════════
+const NOTES_KEY = 'tc_incident_notes';
+function getNotes(){ return JSON.parse(ls(NOTES_KEY)||'[]'); }
+function saveNotes(v){ ss(NOTES_KEY,JSON.stringify(v)); }
+
+function populateIncidentEmpDropdown(prefix){
+  prefix = prefix||'';
+  const id = prefix ? 'admin-note-emp' : 'note-emp';
+  const sel = document.getElementById(id);
+  if(!sel) return;
+  sel.innerHTML='<option value="">— Select staff —</option>'+
+    getEmps().filter(function(e){return e.active;}).map(function(e){
+      return '<option value="'+e.id+'">'+e.name+'</option>';
+    }).join('');
+}
+
+function saveIncidentNote(prefix){
+  prefix = prefix||'';
+  const empId  = document.getElementById((prefix?'admin-':'')+'note-emp')?.value||'';
+  const date   = document.getElementById((prefix?'admin-':'')+'note-date')?.value||todayPH();
+  const time   = document.getElementById((prefix?'admin-':'')+'note-time')?.value||'';
+  const type   = document.getElementById((prefix?'admin-':'')+'note-type')?.value||'other';
+  const detail = (document.getElementById((prefix?'admin-':'')+'note-detail')?.value||'').trim();
+  const emp    = getEmps().find(function(e){return e.id===empId;});
+  if(!empId||!emp){ showToast('Select a staff member','error'); return; }
+  if(!detail){ showToast('Add a note / detail','error'); return; }
+
+  const typeLabels={'missed-clockin':'⚠ Could not Clock In','missed-clockout':'⚠ Could not Clock Out','network':'📡 Network Issue','device':'📱 Device Problem','other':'📝 Other Incident'};
+  const note={
+    id:'note_'+Date.now(),
+    empId, empName:emp.name,
+    date, time, type,
+    label:typeLabels[type]||type,
+    detail,
+    by:CURRENT_ACCESS==='oic'?'OIC':'Admin',
+    savedAt:todayPH()
+  };
+
+  const notes=[note,...getNotes()];
+  saveNotes(notes);
+
+  // Also add to employee history
+  const emps=getEmps();
+  const idx=emps.findIndex(function(e){return e.id===empId;});
+  if(idx>-1){
+    if(!emps[idx].history) emps[idx].history=[];
+    emps[idx].history.push({date:date,note:note.label+(time?' at '+time:'')+' — '+detail+' (recorded by '+note.by+')'});
+    saveEmps(emps);
+  }
+
+  // Clear fields
+  ['note-detail','admin-note-detail'].forEach(function(id){
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  renderIncidentNotes(prefix);
+  showToast('📝 Incident note saved','success');
+}
+
+function renderIncidentNotes(prefix){
+  prefix = prefix||'';
+  const elId = prefix ? 'admin-notes-list' : 'notes-list';
+  const el = document.getElementById(elId);
+  if(!el) return;
+  const notes = getNotes().slice(0,20);
+  if(!notes.length){ el.innerHTML='<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px;">No incident notes yet.</div>'; return; }
+  el.innerHTML = '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">Recent Notes</div>'+
+    notes.map(function(n){
+      return '<div style="background:rgba(215,144,104,0.05);border:1px solid rgba(215,144,104,0.15);border-radius:8px;padding:10px 12px;margin-bottom:6px;font-size:12px;">'+
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'+
+          '<span style="font-weight:600;color:var(--gold);">'+n.label+'</span>'+
+          '<span style="color:var(--muted);">·</span>'+
+          '<span style="font-weight:600;">'+n.empName+'</span>'+
+          '<span style="color:var(--muted);margin-left:auto;font-size:10px;">'+n.date+(n.time?' '+n.time:'')+'</span>'+
+        '</div>'+
+        '<div style="color:var(--muted);">'+escHtml(n.detail)+'</div>'+
+        '<div style="font-size:10px;color:var(--muted2);margin-top:3px;">Recorded by '+n.by+'</div>'+
+      '</div>';
+    }).join('');
+}
+
+// ── show notes when Employees tab first opens in admin ──
+
 function renderDashboard(){
   const emps=getEmps().filter(e=>e.active);
   const active=getActiveSessions(); const today=todayPH();
