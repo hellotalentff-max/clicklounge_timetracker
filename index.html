@@ -455,24 +455,31 @@ async function gas(action, payload){
   if(!url) throw new Error('GAS URL not configured. Go to Admin → Settings.');
   var b = btoa(unescape(encodeURIComponent(JSON.stringify({action:action, payload:payload||{}}))));
   var u = url + '?d=' + encodeURIComponent(b);
-  try{
-    var r = await fetch(u, {redirect:'follow'});
-    var t = await r.text();
-    if(t.startsWith('{') || t.startsWith('[')) return JSON.parse(t);
-    var m = t.match(/^[^(]+\((.+)\)\s*;?\s*$/s);
-    if(m) return JSON.parse(m[1]);
-    throw new Error('Invalid response');
-  }catch(e){
-    return new Promise(function(res,rej){
-      var cb = '_tc'+Math.random().toString(36).slice(2);
-      var tm = setTimeout(function(){ delete window[cb]; rej(new Error('Timeout')); }, 20000);
-      window[cb] = function(d){ clearTimeout(tm); delete window[cb]; res(d); };
-      var s = document.createElement('script');
-      s.src = u + '&callback=' + cb;
-      s.onerror = function(){ clearTimeout(tm); delete window[cb]; rej(new Error('Network error')); };
-      document.body.appendChild(s);
-    });
-  }
+
+  // Use JSONP exclusively — works on GitHub Pages, local files, and everywhere.
+  // fetch() is blocked by CORS when hosted on external domains (GitHub Pages).
+  return new Promise(function(res, rej){
+    var cb  = '_tc' + Date.now() + Math.random().toString(36).slice(2);
+    var sid = cb + '_s';
+    var tm  = setTimeout(function(){
+      delete window[cb];
+      var el = document.getElementById(sid); if(el) el.remove();
+      rej(new Error('Request timed out — check GAS URL and that the deployment is set to "Anyone can access"'));
+    }, 25000);
+    window[cb] = function(d){
+      clearTimeout(tm); delete window[cb];
+      var el = document.getElementById(sid); if(el) el.remove();
+      res(d);
+    };
+    var s = document.createElement('script');
+    s.id  = sid;
+    s.src = u + '&callback=' + cb;
+    s.onerror = function(){
+      clearTimeout(tm); delete window[cb]; s.remove();
+      rej(new Error('Network error — could not reach GAS. Check the URL.'));
+    };
+    document.body.appendChild(s);
+  });
 }
 
 // ════════════════════════════════════════
