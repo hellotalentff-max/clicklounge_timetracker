@@ -387,6 +387,30 @@ button:disabled{opacity:.5;cursor:default;}
   </div>
 </div>
 
+
+<!-- Bonus / Incentive Modal -->
+<div class="pm-bg" id="bonus-bg" onclick="if(event.target===this)closeBonusModal()">
+  <div class="pm">
+    <div class="pm-h">
+      <span>💰 Add Bonus / Incentive</span>
+      <button onclick="closeBonusModal()" style="background:rgba(255,255,255,.12);border:none;color:var(--cream);border-radius:6px;padding:4px 10px;cursor:pointer;">✕</button>
+    </div>
+    <div class="pm-b">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;" id="bonus-emp-label"></div>
+      <label class="fl">Bonus (₱)</label>
+      <input class="fi" id="bonus-val" type="number" placeholder="0" min="0" step="0.01" style="margin-bottom:12px;">
+      <label class="fl">Incentive (₱)</label>
+      <input class="fi" id="incentive-val" type="number" placeholder="0" min="0" step="0.01" style="margin-bottom:12px;">
+      <label class="fl">Notes (optional)</label>
+      <input class="fi" id="bonus-notes" placeholder="e.g. Referral bonus, session incentive…" style="margin-bottom:16px;">
+      <input type="hidden" id="bonus-log-id">
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn" onclick="closeBonusModal()">Cancel</button>
+        <button class="btn btn-t" onclick="saveBonusModal()">💾 Save</button>
+      </div>
+    </div>
+  </div>
+</div>
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -735,11 +759,15 @@ function renderAdminDash(){
     else if(log.in&&!log.out){ status='<span class="badge-ok">In</span>'; inTime=log.in; }
     else if(log.in&&log.out){ status='<span style="font-size:10px;font-weight:600;color:var(--muted);">Done</span>'; inTime=log.in; outTime=log.out; hrs=log.workedHrs||'—'; pay=log.grossPay?'₱'+parseFloat(log.grossPay).toLocaleString():'—'; }
     var ot = log&&log.otStatus==='pending'?'<span class="badge-warn">⚠OT</span>':'';
-    return '<tr><td><strong>'+s.name+'</strong><div style="font-size:10px;color:var(--muted);">'+s.role+'</div></td><td>'+status+'</td><td>'+inTime+'</td><td>'+outTime+'</td><td>'+hrs+'</td><td>'+pay+'</td><td>'+ot+'</td></tr>';
+    var logId = log ? log.id : '';
+    var bonus = log&&parseFloat(log.bonus||0)>0?'₱'+parseFloat(log.bonus).toLocaleString():'—';
+    var incv  = log&&parseFloat(log.incentive||0)>0?'₱'+parseFloat(log.incentive).toLocaleString():'—';
+    var addBtn = log&&log.out?'<button class="btn btn-sm" onclick="openBonusModal(\''+logId+'\',\''+s.name+'\','+parseFloat(log.bonus||0)+','+parseFloat(log.incentive||0)+')">+₱</button>':'';
+    return '<tr><td><strong>'+s.name+'</strong><div style="font-size:10px;color:var(--muted);">'+s.role+'</div></td><td>'+status+'</td><td>'+inTime+'</td><td>'+outTime+'</td><td>'+hrs+'</td><td>'+bonus+'</td><td>'+incv+'</td><td>'+pay+'</td><td>'+ot+'</td><td>'+addBtn+'</td></tr>';
   }).join('');
 
   document.getElementById('a-today-table').innerHTML = rows ?
-    '<table class="a-table"><thead><tr><th>Employee</th><th>Status</th><th>In</th><th>Out</th><th>Hrs</th><th>Est. Pay</th><th>OT</th></tr></thead><tbody>'+rows+'</tbody></table>' :
+    '<table class="a-table"><thead><tr><th>Employee</th><th>Status</th><th>In</th><th>Out</th><th>Hrs</th><th>Bonus</th><th>Incentive</th><th>Gross Pay</th><th>OT</th><th>Action</th></tr></thead><tbody>'+rows+'</tbody></table>' :
     '<p style="color:var(--muted);font-size:12px;">No staff found.</p>';
 
   renderOTList();
@@ -871,6 +899,8 @@ function renderReport(report, type, from, to){
       var rows = emp.logs.map(function(l){
         var otStr = parseFloat(l.otHrs||0)>0 ? parseFloat(l.otHrs).toFixed(2)+'h ('+l.otStatus+')' : '—';
         var holidayMark = l.holiday?'🏖':'';
+        var bon = parseFloat(l.bonus||0)>0?'₱'+parseFloat(l.bonus).toLocaleString():'—';
+        var inc = parseFloat(l.incentive||0)>0?'₱'+parseFloat(l.incentive).toLocaleString():'—';
         return '<tr>'+
           '<td>'+l.date+holidayMark+'</td>'+
           '<td>'+(l.in||'—')+'</td>'+
@@ -879,15 +909,19 @@ function renderReport(report, type, from, to){
           '<td>'+(parseFloat(l.workedHrs||0).toFixed(2))+'</td>'+
           '<td>'+(parseFloat(l.regHrs||0).toFixed(2))+'</td>'+
           '<td>'+otStr+'</td>'+
+          '<td>'+bon+'</td>'+
+          '<td>'+inc+'</td>'+
           '<td>₱'+parseFloat(l.grossPay||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})+'</td>'+
         '</tr>';
       }).join('');
       var totalRow = '<tr class="total"><td colspan="4">TOTAL</td>'+
-        '<td>'+emp.totalReg.toFixed(2)+'h</td>'+
-        '<td>'+emp.totalReg.toFixed(2)+'h</td>'+
-        '<td>'+emp.totalOT.toFixed(2)+'h OT</td>'+
+        '<td>'+(emp.totalReg||0).toFixed(2)+'h</td>'+
+        '<td>'+(emp.totalReg||0).toFixed(2)+'h</td>'+
+        '<td>'+(emp.totalOT||0).toFixed(2)+'h OT</td>'+
+        '<td><strong>₱'+(emp.totalBonus||0).toLocaleString()+'</strong></td>'+
+        '<td><strong>₱'+(emp.totalIncentive||0).toLocaleString()+'</strong></td>'+
         '<td><strong>₱'+emp.totalPay.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})+'</strong></td></tr>';
-      header += '<table class="dtr-table"><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Break</th><th>Worked</th><th>Reg Hrs</th><th>OT</th><th>Gross Pay</th></tr></thead><tbody>'+rows+totalRow+'</tbody></table>';
+      header += '<table class="dtr-table"><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Break</th><th>Worked</th><th>Reg Hrs</th><th>OT</th><th>Bonus</th><th>Incentive</th><th>Gross Pay</th></tr></thead><tbody>'+rows+totalRow+'</tbody></table>';
     }
 
     if(emp.leaves.length){
@@ -1062,6 +1096,31 @@ async function saveGasUrl(){
   }catch(e){ res.textContent = '❌ '+e.message; }
 }
 
+
+// Bonus / Incentive modal
+function openBonusModal(logId, empName, currentBonus, currentIncentive){
+  document.getElementById('bonus-log-id').value = logId;
+  document.getElementById('bonus-emp-label').textContent = 'Employee: ' + empName;
+  document.getElementById('bonus-val').value = currentBonus || 0;
+  document.getElementById('incentive-val').value = currentIncentive || 0;
+  document.getElementById('bonus-notes').value = '';
+  document.getElementById('bonus-bg').classList.add('open');
+}
+function closeBonusModal(){ document.getElementById('bonus-bg').classList.remove('open'); }
+async function saveBonusModal(){
+  var logId   = document.getElementById('bonus-log-id').value;
+  var bonus   = parseFloat(document.getElementById('bonus-val').value)||0;
+  var incentive = parseFloat(document.getElementById('incentive-val').value)||0;
+  var notes   = document.getElementById('bonus-notes').value.trim();
+  closeBonusModal();
+  showToast('Saving bonus/incentive…');
+  try{
+    var r = await gas('updateLogBonus',{adminPin:ADMIN_PIN_STORED, logId:logId, bonus:bonus, incentive:incentive, notes:notes});
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ '+r.message);
+    await refreshAdminData();
+  }catch(e){ showToast('❌ '+e.message); }
+}
 // ════════════════════════════════════════
 //  UTILS
 // ════════════════════════════════════════
