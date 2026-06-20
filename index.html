@@ -320,31 +320,16 @@ button:disabled{opacity:.5;cursor:default;}
 
     <!-- EMPLOYEES -->
     <div id="apanel-emp" style="display:none;">
-      <div class="aform" id="emp-form">
-        <div class="aform-title" id="emp-form-title">➕ Add Employee</div>
-        <div class="aform-grid">
-          <div class="fg"><label class="fl">Full Name *</label><input class="fi" id="ef-name" placeholder="e.g. Juan dela Cruz"></div>
-          <div class="fg"><label class="fl">Role / Position *</label><input class="fi" id="ef-role" placeholder="e.g. Photographer"></div>
-          <div class="fg"><label class="fl">Type</label>
-            <select class="fi" id="ef-type"><option value="full-time">Full-time</option><option value="part-time">Part-time</option><option value="on-call">On-call</option></select>
-          </div>
-          <div class="fg"><label class="fl">4-Digit PIN *</label><input class="fi" id="ef-pin" type="number" placeholder="e.g. 1234" maxlength="4"></div>
-          <div class="fg"><label class="fl">Hourly Rate (₱) *</label><input class="fi" id="ef-rate" type="number" placeholder="e.g. 75"></div>
-          <div class="fg"><label class="fl">Shift Type</label>
-            <select class="fi" id="ef-shift"><option value="flexible">Flexible</option><option value="fixed">Fixed</option></select>
-          </div>
-          <div class="fg"><label class="fl">Shift Start</label><input class="fi" id="ef-start" type="time"></div>
-          <div class="fg"><label class="fl">Shift End</label><input class="fi" id="ef-end" type="time"></div>
-          <div class="fg"><label class="fl">SL Balance (days)</label><input class="fi" id="ef-sl" type="number" value="5"></div>
-          <div class="fg"><label class="fl">VL Balance (days)</label><input class="fi" id="ef-vl" type="number" value="5"></div>
-          <div class="fg"><label class="fl">EL Balance (days)</label><input class="fi" id="ef-el" type="number" value="3"></div>
-          <div class="fg"><label class="fl">Notes</label><input class="fi" id="ef-notes" placeholder="Optional"></div>
-        </div>
-        <input type="hidden" id="ef-edit-name">
-        <div style="display:flex;gap:8px;margin-top:10px;">
-          <button class="btn btn-t" onclick="saveEmployee()">💾 Save Employee</button>
-          <button class="btn" onclick="clearEmpForm()">Clear</button>
-        </div>
+      <!-- Search & Toolbar -->
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+        <input class="fi" id="emp-search" placeholder="Search employees…" style="flex:1;min-width:200px;" oninput="filterEmpList()">
+        <select class="sel" id="emp-filter" onchange="filterEmpList()" style="padding:9px 12px;">
+          <option value="active">Active only</option>
+          <option value="all">All (incl. inactive)</option>
+          <option value="inactive">Inactive only</option>
+        </select>
+        <button class="btn btn-t" onclick="openEmpModal()">➕ Add Employee</button>
+        <button class="btn" onclick="runMigrateStaff()" title="Add missing HR columns to existing Staff sheet">🔧 Migrate HR Fields</button>
       </div>
       <div id="emp-list"></div>
     </div>
@@ -431,6 +416,133 @@ button:disabled{opacity:.5;cursor:default;}
     </div>
   </div>
 </div>
+<!-- ── Employee Modal — full HR profile ── -->
+<div class="pm-bg" id="emp-modal-bg" onclick="if(event.target===this)closeEmpModal()">
+  <div class="pm" style="max-width:680px;max-height:92vh;overflow-y:auto;">
+    <div class="pm-h" style="position:sticky;top:0;z-index:2;">
+      <span id="emp-modal-title">➕ Add Employee</span>
+      <button onclick="closeEmpModal()" style="background:rgba(255,255,255,.12);border:none;color:var(--cream);border-radius:6px;padding:4px 10px;cursor:pointer;">✕</button>
+    </div>
+    <div class="pm-b">
+      <input type="hidden" id="ef-id">
+      <input type="hidden" id="ef-edit-name">
+
+      <!-- Tabs inside modal -->
+      <div style="display:flex;gap:4px;margin-bottom:18px;border-bottom:2px solid var(--border);overflow-x:auto;">
+        <button class="emp-mtab on" data-tab="basic"   onclick="empMTab('basic')">👤 Basic</button>
+        <button class="emp-mtab"    data-tab="schedule" onclick="empMTab('schedule')">📅 Schedule</button>
+        <button class="emp-mtab"    data-tab="hr"      onclick="empMTab('hr')">🏛 HR / Gov't</button>
+        <button class="emp-mtab"    data-tab="contract" onclick="empMTab('contract')">📜 Contract</button>
+        <button class="emp-mtab"    data-tab="eval"    onclick="empMTab('eval')">⭐ Evaluation</button>
+      </div>
+
+      <!-- Basic Tab -->
+      <div class="emp-mpanel" data-tab="basic">
+        <div class="aform-grid">
+          <div class="fg"><label class="fl">Full Name *</label><input class="fi" id="ef-name" placeholder="e.g. Juan dela Cruz"></div>
+          <div class="fg"><label class="fl">Role / Position *</label><input class="fi" id="ef-role" placeholder="e.g. Photographer"></div>
+          <div class="fg"><label class="fl">Type</label>
+            <select class="fi" id="ef-type"><option value="full-time">Full-time</option><option value="part-time">Part-time</option><option value="on-call">On-call</option><option value="contractor">Contractor</option></select>
+          </div>
+          <div class="fg"><label class="fl">Status</label>
+            <select class="fi" id="ef-status"><option value="active">Active</option><option value="inactive">Inactive</option><option value="on-leave">On Leave</option></select>
+          </div>
+          <div class="fg"><label class="fl">4-Digit PIN *</label><input class="fi" id="ef-pin" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="e.g. 1234"></div>
+          <div class="fg"><label class="fl">Hourly Rate (₱) *</label><input class="fi" id="ef-rate" type="number" placeholder="e.g. 75"></div>
+          <div class="fg"><label class="fl">Email</label><input class="fi" id="ef-email" type="email" placeholder="juan@example.com"></div>
+          <div class="fg"><label class="fl">Phone</label><input class="fi" id="ef-phone" type="tel" placeholder="0917 xxx xxxx"></div>
+          <div class="fg"><label class="fl">Birthday</label><input class="fi" id="ef-birthday" type="date"></div>
+          <div class="fg"><label class="fl">Date Hired</label><input class="fi" id="ef-hired" type="date"></div>
+          <div class="fg" style="grid-column:1/-1;"><label class="fl">Address</label><textarea class="fi" id="ef-address" rows="2" placeholder="Full home address"></textarea></div>
+          <div class="fg"><label class="fl">Emergency Contact</label><input class="fi" id="ef-emergency-contact" placeholder="Full name"></div>
+          <div class="fg"><label class="fl">Emergency Phone</label><input class="fi" id="ef-emergency-phone" type="tel"></div>
+          <div class="fg"><label class="fl">Relationship</label><input class="fi" id="ef-emergency-rel" placeholder="e.g. Mother, Spouse"></div>
+          <div class="fg" style="grid-column:1/-1;"><label class="fl">General Notes</label><textarea class="fi" id="ef-notes" rows="2" placeholder="Anything else…"></textarea></div>
+        </div>
+      </div>
+
+      <!-- Schedule Tab -->
+      <div class="emp-mpanel" data-tab="schedule" style="display:none;">
+        <div class="aform-grid">
+          <div class="fg"><label class="fl">Shift Type</label>
+            <select class="fi" id="ef-shift"><option value="flexible">Flexible</option><option value="fixed">Fixed</option></select>
+          </div>
+          <div class="fg"><label class="fl">Shift Start</label><input class="fi" id="ef-start" type="time"></div>
+          <div class="fg"><label class="fl">Shift End</label><input class="fi" id="ef-end" type="time"></div>
+          <div class="fg"></div>
+          <div class="fg"><label class="fl">Sick Leave Balance (days)</label><input class="fi" id="ef-sl" type="number" value="5"></div>
+          <div class="fg"><label class="fl">Vacation Leave Balance (days)</label><input class="fi" id="ef-vl" type="number" value="5"></div>
+          <div class="fg"><label class="fl">Emergency Leave Balance (days)</label><input class="fi" id="ef-el" type="number" value="3"></div>
+        </div>
+      </div>
+
+      <!-- HR / Government Tab -->
+      <div class="emp-mpanel" data-tab="hr" style="display:none;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Philippines government IDs &amp; bank info for payroll.</div>
+        <div class="aform-grid">
+          <div class="fg"><label class="fl">SSS Number</label><input class="fi" id="ef-sss" placeholder="00-0000000-0"></div>
+          <div class="fg"><label class="fl">PhilHealth Number</label><input class="fi" id="ef-philhealth" placeholder="00-000000000-0"></div>
+          <div class="fg"><label class="fl">Pag-IBIG Number</label><input class="fi" id="ef-pagibig" placeholder="0000-0000-0000"></div>
+          <div class="fg"><label class="fl">TIN Number</label><input class="fi" id="ef-tin" placeholder="000-000-000-000"></div>
+          <div class="fg"><label class="fl">Bank Name</label><input class="fi" id="ef-bank-name" placeholder="e.g. BPI, BDO, GCash"></div>
+          <div class="fg"><label class="fl">Bank Account Number</label><input class="fi" id="ef-bank-account" placeholder="Account # / GCash #"></div>
+        </div>
+      </div>
+
+      <!-- Contract Tab -->
+      <div class="emp-mpanel" data-tab="contract" style="display:none;">
+        <div class="aform-grid">
+          <div class="fg"><label class="fl">Contract Type</label>
+            <select class="fi" id="ef-contract-type">
+              <option value="">— select —</option>
+              <option value="probationary">Probationary</option>
+              <option value="regular">Regular</option>
+              <option value="contractual">Contractual</option>
+              <option value="project-based">Project-Based</option>
+            </select>
+          </div>
+          <div class="fg"><label class="fl">Contract Start Date</label><input class="fi" id="ef-contract-start" type="date"></div>
+          <div class="fg"><label class="fl">Contract End Date</label><input class="fi" id="ef-contract-end" type="date"></div>
+          <div class="fg"></div>
+          <div class="fg" style="grid-column:1/-1;"><label class="fl">Resume URL</label>
+            <input class="fi" id="ef-resume-url" placeholder="https://drive.google.com/file/d/…">
+            <div style="font-size:10px;color:var(--muted);margin-top:3px;">Upload resume to Google Drive, paste shareable link here.</div>
+          </div>
+          <div class="fg" style="grid-column:1/-1;"><label class="fl">Photo URL</label>
+            <input class="fi" id="ef-photo-url" placeholder="https://drive.google.com/file/d/…">
+            <div style="font-size:10px;color:var(--muted);margin-top:3px;">ID photo for employee records.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Evaluation Tab -->
+      <div class="emp-mpanel" data-tab="eval" style="display:none;">
+        <div class="aform-grid">
+          <div class="fg"><label class="fl">Evaluation Score (1–5)</label>
+            <input class="fi" id="ef-eval-score" type="number" min="1" max="5" step="0.1" placeholder="e.g. 4.5">
+          </div>
+          <div class="fg"><label class="fl">Last Evaluation Date</label><input class="fi" id="ef-eval-date" type="date"></div>
+          <div class="fg" style="grid-column:1/-1;"><label class="fl">HR Notes (Performance, warnings, commendations, etc.)</label>
+            <textarea class="fi" id="ef-notes-hr" rows="5" placeholder="Performance reviews, disciplinary records, commendations…"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
+        <button class="btn btn-d btn-sm" id="emp-delete-btn" onclick="deleteEmp()" style="display:none;margin-right:auto;">🗑 Permanently Delete</button>
+        <button class="btn" onclick="closeEmpModal()">Cancel</button>
+        <button class="btn btn-t" onclick="saveEmployee()">💾 Save Employee</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.emp-mtab{padding:8px 14px;font-size:11px;font-weight:600;color:var(--muted);border:none;background:none;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent;margin-bottom:-2px;}
+.emp-mtab.on{color:var(--teal);border-bottom-color:var(--teal);}
+</style>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -1013,58 +1125,123 @@ function renderReport(report, type, from, to){
 }
 
 // ── EMPLOYEES ──
-function renderEmpList(){
+function renderEmpList(){ filterEmpList(); }
+
+function filterEmpList(){
   var staff = (ADMIN_DATA.staff||[]);
+  var q = (document.getElementById('emp-search')?.value||'').toLowerCase().trim();
+  var f = document.getElementById('emp-filter')?.value || 'active';
+  var list = staff.filter(function(s){
+    if(f==='active'   && s.status==='inactive') return false;
+    if(f==='inactive' && s.status!=='inactive') return false;
+    if(q && (s.name+' '+s.role+' '+(s.email||'')+' '+(s.phone||'')).toLowerCase().indexOf(q)===-1) return false;
+    return true;
+  });
   var el = document.getElementById('emp-list');
-  if(!staff.length){ el.innerHTML='<p style="color:var(--muted);font-size:12px;padding:12px;">No employees yet. Add one above.</p>'; return; }
-  el.innerHTML='<table class="a-table"><thead><tr><th>Name</th><th>Role</th><th>Type</th><th>Rate/hr</th><th>Shift</th><th>Leave Bal</th><th>Status</th><th>Action</th></tr></thead><tbody>'+
-    staff.map(function(s){
-      return '<tr>'+
-        '<td><strong>'+s.name+'</strong></td>'+
-        '<td>'+s.role+'</td>'+
-        '<td><span class="badge-info">'+s.type+'</span></td>'+
+  if(!staff.length){ el.innerHTML='<p style="color:var(--muted);font-size:12px;padding:12px;">No employees yet. Click ➕ Add Employee above.</p>'; return; }
+  if(!list.length){ el.innerHTML='<p style="color:var(--muted);font-size:12px;padding:12px;">No matches.</p>'; return; }
+  el.innerHTML='<table class="a-table"><thead><tr><th>Name</th><th>Role</th><th>Type</th><th>Rate/hr</th><th>Shift</th><th>Leave Bal</th><th class="hm">Contact</th><th>Status</th><th>Action</th></tr></thead><tbody>'+
+    list.map(function(s){
+      var contact = (s.email||s.phone||'<span style="color:var(--muted);">—</span>');
+      var status = s.status==='inactive' ? '<span class="badge-danger">Inactive</span>' :
+                   s.status==='on-leave' ? '<span class="badge-warn">On Leave</span>' :
+                   '<span class="badge-ok">Active</span>';
+      return '<tr onclick="openEmpModal(\''+escAttr(s.name)+'\')" style="cursor:pointer;">'+
+        '<td><strong>'+esc(s.name)+'</strong></td>'+
+        '<td>'+esc(s.role||'—')+'</td>'+
+        '<td><span class="badge-info">'+esc(s.type||'—')+'</span></td>'+
         '<td>₱'+(parseFloat(s.rate||0)).toLocaleString()+'</td>'+
-        '<td style="font-size:10px;">'+(s.shiftType==='fixed'?s.shiftStart+'–'+s.shiftEnd:'Flexible')+'</td>'+
-        '<td style="font-size:10px;">SL:'+s.slBal+' VL:'+s.vlBal+' EL:'+s.elBal+'</td>'+
-        '<td>'+(s.status==='inactive'?'<span class="badge-danger">Inactive</span>':'<span class="badge-ok">Active</span>')+'</td>'+
-        '<td style="display:flex;gap:4px;">'+
-          '<button class="btn btn-sm" onclick="editEmp(\''+s.name+'\')">✏</button>'+
-          '<button class="btn btn-d btn-sm" onclick="deactivateEmp(\''+s.name+'\')">✕</button>'+
+        '<td style="font-size:10px;">'+(s.shiftType==='fixed'?(s.shiftStart||'?')+'–'+(s.shiftEnd||'?'):'Flexible')+'</td>'+
+        '<td style="font-size:10px;">SL:'+(s.slBal||0)+' VL:'+(s.vlBal||0)+' EL:'+(s.elBal||0)+'</td>'+
+        '<td class="hm" style="font-size:11px;">'+esc(contact)+'</td>'+
+        '<td>'+status+'</td>'+
+        '<td onclick="event.stopPropagation()" style="display:flex;gap:4px;">'+
+          '<button class="btn btn-sm" onclick="openEmpModal(\''+escAttr(s.name)+'\')" title="Edit">✏</button>'+
+          (s.status!=='inactive' ?
+            '<button class="btn btn-d btn-sm" onclick="deactivateEmp(\''+escAttr(s.name)+'\')" title="Deactivate">✕</button>' :
+            '<button class="btn btn-t btn-sm" onclick="reactivateEmp(\''+escAttr(s.name)+'\')" title="Reactivate">↻</button>') +
         '</td></tr>';
     }).join('')+'</tbody></table>';
 }
 
-function editEmp(name){
-  var s = (ADMIN_DATA.staff||[]).find(function(x){ return x.name===name; });
-  if(!s) return;
-  document.getElementById('ef-name').value = s.name;
-  document.getElementById('ef-role').value = s.role;
-  document.getElementById('ef-type').value = s.type;
-  document.getElementById('ef-pin').value  = s.pin;
-  document.getElementById('ef-rate').value = s.rate;
-  document.getElementById('ef-shift').value= s.shiftType;
-  document.getElementById('ef-start').value= s.shiftStart||'';
-  document.getElementById('ef-end').value  = s.shiftEnd||'';
-  document.getElementById('ef-sl').value   = s.slBal;
-  document.getElementById('ef-vl').value   = s.vlBal;
-  document.getElementById('ef-el').value   = s.elBal;
-  document.getElementById('ef-notes').value= s.notes||'';
-  document.getElementById('ef-edit-name').value = s.name;
-  document.getElementById('emp-form-title').textContent = '✏ Editing: '+s.name;
-  document.getElementById('ef-name').readOnly = true;
-  document.getElementById('emp-form').scrollIntoView({behavior:'smooth'});
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s){ return String(s||'').replace(/'/g,'\\\''); }
+
+// ── EMPLOYEE MODAL ──
+function empMTab(id){
+  document.querySelectorAll('.emp-mtab').forEach(function(t){ t.classList.toggle('on', t.dataset.tab===id); });
+  document.querySelectorAll('.emp-mpanel').forEach(function(p){ p.style.display = p.dataset.tab===id ? '' : 'none'; });
 }
 
-function clearEmpForm(){
-  ['ef-name','ef-role','ef-pin','ef-rate','ef-start','ef-end','ef-notes'].forEach(function(id){ document.getElementById(id).value=''; });
-  document.getElementById('ef-type').value='full-time';
-  document.getElementById('ef-shift').value='flexible';
-  document.getElementById('ef-sl').value='5';
-  document.getElementById('ef-vl').value='5';
-  document.getElementById('ef-el').value='3';
-  document.getElementById('ef-edit-name').value='';
-  document.getElementById('emp-form-title').textContent='➕ Add Employee';
-  document.getElementById('ef-name').readOnly=false;
+function openEmpModal(name){
+  // Reset form
+  var fields = ['ef-id','ef-name','ef-role','ef-pin','ef-rate','ef-email','ef-phone','ef-birthday','ef-hired','ef-address',
+    'ef-emergency-contact','ef-emergency-phone','ef-emergency-rel','ef-start','ef-end','ef-notes',
+    'ef-sss','ef-philhealth','ef-pagibig','ef-tin','ef-bank-name','ef-bank-account',
+    'ef-contract-start','ef-contract-end','ef-resume-url','ef-photo-url','ef-eval-score','ef-eval-date','ef-notes-hr','ef-edit-name'];
+  fields.forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('ef-type').value = 'full-time';
+  document.getElementById('ef-status').value = 'active';
+  document.getElementById('ef-shift').value = 'flexible';
+  document.getElementById('ef-sl').value = '5';
+  document.getElementById('ef-vl').value = '5';
+  document.getElementById('ef-el').value = '3';
+  document.getElementById('ef-contract-type').value = '';
+  document.getElementById('emp-delete-btn').style.display = 'none';
+
+  if(name){
+    var s = (ADMIN_DATA.staff||[]).find(function(x){ return x.name===name; });
+    if(!s) return;
+    document.getElementById('emp-modal-title').textContent = '✏ ' + s.name;
+    document.getElementById('ef-id').value          = s.id || '';
+    document.getElementById('ef-edit-name').value   = s.name;
+    document.getElementById('ef-name').value        = s.name;
+    document.getElementById('ef-name').readOnly     = true;
+    document.getElementById('ef-role').value        = s.role || '';
+    document.getElementById('ef-type').value        = s.type || 'full-time';
+    document.getElementById('ef-status').value      = s.status || 'active';
+    document.getElementById('ef-pin').value         = s.pin || '';
+    document.getElementById('ef-rate').value        = s.rate || '';
+    document.getElementById('ef-email').value       = s.email || '';
+    document.getElementById('ef-phone').value       = s.phone || '';
+    document.getElementById('ef-birthday').value    = s.birthday || '';
+    document.getElementById('ef-hired').value       = s.hired || '';
+    document.getElementById('ef-address').value     = s.address || '';
+    document.getElementById('ef-emergency-contact').value = s.emergencyContact || '';
+    document.getElementById('ef-emergency-phone').value   = s.emergencyPhone || '';
+    document.getElementById('ef-emergency-rel').value     = s.emergencyRelationship || '';
+    document.getElementById('ef-shift').value       = s.shiftType || 'flexible';
+    document.getElementById('ef-start').value       = s.shiftStart || '';
+    document.getElementById('ef-end').value         = s.shiftEnd || '';
+    document.getElementById('ef-sl').value          = s.slBal !== undefined ? s.slBal : 5;
+    document.getElementById('ef-vl').value          = s.vlBal !== undefined ? s.vlBal : 5;
+    document.getElementById('ef-el').value          = s.elBal !== undefined ? s.elBal : 3;
+    document.getElementById('ef-notes').value       = s.notes || '';
+    document.getElementById('ef-sss').value         = s.sss || '';
+    document.getElementById('ef-philhealth').value  = s.philhealth || '';
+    document.getElementById('ef-pagibig').value     = s.pagibig || '';
+    document.getElementById('ef-tin').value         = s.tin || '';
+    document.getElementById('ef-bank-name').value   = s.bankName || '';
+    document.getElementById('ef-bank-account').value= s.bankAccount || '';
+    document.getElementById('ef-contract-type').value  = s.contractType || '';
+    document.getElementById('ef-contract-start').value = s.contractStart || '';
+    document.getElementById('ef-contract-end').value   = s.contractEnd || '';
+    document.getElementById('ef-resume-url').value  = s.resumeUrl || '';
+    document.getElementById('ef-photo-url').value   = s.photoUrl || '';
+    document.getElementById('ef-eval-score').value  = s.evaluationScore || '';
+    document.getElementById('ef-eval-date').value   = s.lastEvaluationDate || '';
+    document.getElementById('ef-notes-hr').value    = s.notesHr || '';
+    document.getElementById('emp-delete-btn').style.display = '';
+  } else {
+    document.getElementById('emp-modal-title').textContent = '➕ Add Employee';
+    document.getElementById('ef-name').readOnly = false;
+  }
+  empMTab('basic');
+  document.getElementById('emp-modal-bg').classList.add('open');
+}
+
+function closeEmpModal(){
+  document.getElementById('emp-modal-bg').classList.remove('open');
 }
 
 async function saveEmployee(){
@@ -1072,12 +1249,26 @@ async function saveEmployee(){
   var editName = document.getElementById('ef-edit-name').value;
   var pin  = String(document.getElementById('ef-pin').value).trim();
   var rate = document.getElementById('ef-rate').value;
-  if(!name||!pin||!rate){ showToast('Name, PIN, and Rate are required.'); return; }
-  if(pin.length!==4||isNaN(pin)){ showToast('PIN must be exactly 4 digits.'); return; }
-  showToast('Saving…');
+  if(!name){ showToast('Name is required.'); empMTab('basic'); return; }
+  if(!editName){ // adding new
+    if(!pin){ showToast('PIN is required.'); empMTab('basic'); return; }
+    if(!/^\d{4}$/.test(pin)){ showToast('PIN must be exactly 4 digits.'); empMTab('basic'); return; }
+    if(!rate){ showToast('Hourly rate is required.'); empMTab('basic'); return; }
+  }
   var payload = {
-    adminPin:ADMIN_PIN_STORED, name:name, role:document.getElementById('ef-role').value,
-    type:document.getElementById('ef-type').value, pin:pin, rate:rate,
+    adminPin:ADMIN_PIN_STORED, name:name,
+    role:document.getElementById('ef-role').value,
+    type:document.getElementById('ef-type').value,
+    status:document.getElementById('ef-status').value,
+    pin:pin, rate:rate,
+    email:document.getElementById('ef-email').value.trim(),
+    phone:document.getElementById('ef-phone').value.trim(),
+    birthday:document.getElementById('ef-birthday').value,
+    hired:document.getElementById('ef-hired').value,
+    address:document.getElementById('ef-address').value.trim(),
+    emergencyContact:document.getElementById('ef-emergency-contact').value.trim(),
+    emergencyPhone:document.getElementById('ef-emergency-phone').value.trim(),
+    emergencyRelationship:document.getElementById('ef-emergency-rel').value.trim(),
     shiftType:document.getElementById('ef-shift').value,
     shiftStart:document.getElementById('ef-start').value,
     shiftEnd:document.getElementById('ef-end').value,
@@ -1085,26 +1276,73 @@ async function saveEmployee(){
     vlBal:document.getElementById('ef-vl').value,
     elBal:document.getElementById('ef-el').value,
     notes:document.getElementById('ef-notes').value,
-    status:'active'
+    sss:document.getElementById('ef-sss').value.trim(),
+    philhealth:document.getElementById('ef-philhealth').value.trim(),
+    pagibig:document.getElementById('ef-pagibig').value.trim(),
+    tin:document.getElementById('ef-tin').value.trim(),
+    bankName:document.getElementById('ef-bank-name').value.trim(),
+    bankAccount:document.getElementById('ef-bank-account').value.trim(),
+    contractType:document.getElementById('ef-contract-type').value,
+    contractStart:document.getElementById('ef-contract-start').value,
+    contractEnd:document.getElementById('ef-contract-end').value,
+    resumeUrl:document.getElementById('ef-resume-url').value.trim(),
+    photoUrl:document.getElementById('ef-photo-url').value.trim(),
+    evaluationScore:document.getElementById('ef-eval-score').value,
+    lastEvaluationDate:document.getElementById('ef-eval-date').value,
+    notesHr:document.getElementById('ef-notes-hr').value
   };
+  showToast('Saving…');
   try{
     var r = editName ? await gas('updateEmployee', payload) : await gas('addEmployee', payload);
     if(!r.ok) throw new Error(r.error);
     showToast('✅ '+r.message);
-    clearEmpForm();
+    closeEmpModal();
     await refreshAdminData();
-    renderEmpList();
+    populateReportEmpSelect();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function deleteEmp(){
+  var name = document.getElementById('ef-edit-name').value;
+  if(!name) return;
+  if(!confirm('PERMANENTLY DELETE "'+name+'"?\n\nThis will remove the employee record from the Staff sheet entirely. Their time logs and leave history will remain.\n\nFor reversible action, change Status to Inactive instead.')) return;
+  try{
+    var r = await gas('deleteEmployee',{adminPin:ADMIN_PIN_STORED, name:name, permanent:true});
+    if(!r.ok) throw new Error(r.error);
+    showToast('🗑 '+r.message);
+    closeEmpModal();
+    await refreshAdminData();
     populateReportEmpSelect();
   }catch(e){ showToast('❌ '+e.message); }
 }
 
 async function deactivateEmp(name){
-  if(!confirm('Deactivate '+name+'? They will no longer be able to clock in.')) return;
+  if(!confirm('Deactivate '+name+'? They will no longer be able to clock in. Their data is preserved.')) return;
   try{
     var r = await gas('deleteEmployee',{adminPin:ADMIN_PIN_STORED, name:name});
     if(!r.ok) throw new Error(r.error);
     showToast('✅ '+r.message);
-    await refreshAdminData(); renderEmpList();
+    await refreshAdminData();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function reactivateEmp(name){
+  try{
+    var r = await gas('updateEmployee',{adminPin:ADMIN_PIN_STORED, name:name, status:'active'});
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ Reactivated '+name);
+    await refreshAdminData();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function runMigrateStaff(){
+  if(!confirm('This will add new HR columns to your Staff sheet (Email, Phone, SSS, etc.). Existing data is preserved. Continue?')) return;
+  showToast('Migrating…');
+  try{
+    var r = await gas('tc_migrate',{adminPin:ADMIN_PIN_STORED});
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ '+r.message);
+    await refreshAdminData();
   }catch(e){ showToast('❌ '+e.message); }
 }
 
