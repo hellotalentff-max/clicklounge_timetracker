@@ -398,9 +398,9 @@ button:disabled{opacity:.5;cursor:default;}
       <div class="aform">
         <div class="aform-title">🔐 Change Admin PIN</div>
         <p style="font-size:11px;color:var(--muted);margin-bottom:12px;">Default PIN is <strong>5678</strong>. Change it after first login.</p>
-        <div class="fg"><label class="fl">Current PIN</label><input class="fi" type="password" id="set-cur" maxlength="4" placeholder="Current 4-digit PIN"></div>
-        <div class="fg"><label class="fl">New PIN (4 digits)</label><input class="fi" type="number" id="set-new" maxlength="4"></div>
-        <div class="fg"><label class="fl">Confirm New PIN</label><input class="fi" type="number" id="set-con" maxlength="4"></div>
+        <div class="fg"><label class="fl">Current PIN</label><input class="fi" type="password" inputmode="numeric" pattern="[0-9]{4}" id="set-cur" maxlength="4" placeholder="Current 4-digit PIN"></div>
+        <div class="fg"><label class="fl">New PIN (4 digits)</label><input class="fi" type="text" inputmode="numeric" pattern="[0-9]{4}" id="set-new" maxlength="4" placeholder="e.g. 1234"></div>
+        <div class="fg"><label class="fl">Confirm New PIN</label><input class="fi" type="text" inputmode="numeric" pattern="[0-9]{4}" id="set-con" maxlength="4" placeholder="Re-enter new PIN"></div>
         <button class="btn btn-t" onclick="changeAdminPin()">Update PIN</button>
       </div>
     </div>
@@ -1138,14 +1138,19 @@ async function removeHoliday(id){
 
 // ── SETTINGS ──
 async function changeAdminPin(){
-  var cur=document.getElementById('set-cur').value,nw=document.getElementById('set-new').value,con=document.getElementById('set-con').value;
+  var cur=String(document.getElementById('set-cur').value||'').trim();
+  var nw =String(document.getElementById('set-new').value||'').trim();
+  var con=String(document.getElementById('set-con').value||'').trim();
+  if(!cur){ showToast('Enter your current PIN.'); return; }
+  if(!nw||!con){ showToast('Fill in both new PIN fields.'); return; }
   if(nw!==con){ showToast('New PINs do not match.'); return; }
-  if(nw.length!==4||isNaN(nw)){ showToast('PIN must be 4 digits.'); return; }
+  if(!/^\d{4}$/.test(nw)){ showToast('PIN must be exactly 4 digits (you entered '+nw.length+').'); return; }
   try{
     var r = await gas('setAdminPin',{adminPin:cur,newPin:nw});
-    if(!r.ok) throw new Error(r.error);
+    if(!r.ok) throw new Error(r.error||'Failed');
     ADMIN_PIN_STORED=nw;
-    showToast('✅ Admin PIN updated');
+    localStorage.setItem('tc_admin_pin', nw);
+    showToast('✅ Admin PIN updated to '+nw);
     ['set-cur','set-new','set-con'].forEach(function(id){ document.getElementById(id).value=''; });
   }catch(e){ showToast('❌ '+e.message); }
 }
