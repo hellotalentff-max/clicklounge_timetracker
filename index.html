@@ -462,6 +462,7 @@ async function gas(action, payload){
     if(payload.adminPin) u += '&adminPin=' + encodeURIComponent(payload.adminPin);
     if(payload.name)     u += '&name='     + encodeURIComponent(payload.name);
     if(payload.pin)      u += '&pin='      + encodeURIComponent(payload.pin);
+    if(payload.newPin)   u += '&newPin='   + encodeURIComponent(payload.newPin);
     if(payload.sheetId)  u += '&sheetId='  + encodeURIComponent(payload.sheetId);
   }
 
