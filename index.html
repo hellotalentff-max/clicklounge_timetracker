@@ -1161,7 +1161,7 @@ async function saveGasUrl(){
   detail.style.display = 'none';
   try{
     var r = await gas('ping');
-    if(r.ok && r.service==='TimeCommand'){
+    if(r.ok && r.service && String(r.service).indexOf('TimeCommand')!==-1){
       res.style.color='var(--success)';
       res.textContent = '✅ Connected! '+r.routes.length+' routes available.';
       detail.style.display='block';
