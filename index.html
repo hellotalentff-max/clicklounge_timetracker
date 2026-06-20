@@ -671,22 +671,28 @@ function renderStaffStats(){
     worked = parseFloat(todayLog.workedHrs)||0;
     ot     = parseFloat(todayLog.otHrs)||0;
     pay    = parseFloat(todayLog.grossPay)||0;
-  } else if(open){
-    // Estimate live hours
-    var now = new Date();
-    var phtStr = now.toLocaleString('en-CA',{timeZone:'Asia/Manila',hour12:false}).replace(', ','T');
-    var timeStr = phtStr.split('T')[1].slice(0,5);
-    var inParts = open.in.split(':');
-    var nowMins = parseInt(timeStr.split(':')[0])*60+parseInt(timeStr.split(':')[1]);
-    var inMins  = parseInt(inParts[0])*60+parseInt(inParts[1]);
-    worked = Math.max(0,(nowMins-inMins-(parseInt(open.breakMins)||0))/60);
-    ot = Math.max(0,worked-8);
-    var rate = parseFloat((CURR_USER||{}).rate)||0;
-    pay = Math.min(worked,8)*rate + (ot>0?ot*rate*1.25:0);
+  } else if(open && open.in){
+    // Estimate live hours — only if open.in looks like a valid HH:MM string
+    var inStr = String(open.in||'').trim();
+    var match = inStr.match(/^(\d{1,2}):(\d{2})/);
+    if(match){
+      var now = new Date();
+      var phtStr = now.toLocaleString('en-CA',{timeZone:'Asia/Manila',hour12:false}).replace(', ','T');
+      var timeStr = phtStr.split('T')[1].slice(0,5);
+      var inH = parseInt(match[1])||0, inM = parseInt(match[2])||0;
+      var nowH= parseInt(timeStr.split(':')[0])||0, nowM = parseInt(timeStr.split(':')[1])||0;
+      var totalMins = (nowH*60+nowM)-(inH*60+inM)-(parseInt(open.breakMins)||0);
+      worked = Math.max(0, totalMins/60);
+      if(isNaN(worked)) worked = 0;
+      ot = Math.max(0, worked-8);
+      var rate = parseFloat((CURR_USER||{}).rate)||0;
+      pay = (Math.min(worked,8)*rate) + (ot*rate); // OT at regular rate (no 1.25x)
+      if(isNaN(pay)) pay = 0;
+    }
   }
-  document.getElementById('s-worked').textContent = worked.toFixed(1)+'h';
-  document.getElementById('s-ot').textContent = ot.toFixed(1)+'h';
-  document.getElementById('s-pay').textContent = '₱'+Math.round(pay).toLocaleString();
+  document.getElementById('s-worked').textContent = (worked||0).toFixed(1)+'h';
+  document.getElementById('s-ot').textContent = (ot||0).toFixed(1)+'h';
+  document.getElementById('s-pay').textContent = '₱'+Math.round(pay||0).toLocaleString();
 }
 
 function renderLeaveBalance(){
