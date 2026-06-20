@@ -455,7 +455,15 @@ async function gas(action, payload){
   var url = GAS_URL || localStorage.getItem('tc_gas_url') || '';
   if(!url) throw new Error('GAS URL not configured. Go to Admin → Settings.');
   var b = btoa(unescape(encodeURIComponent(JSON.stringify({action:action, payload:payload||{}}))));
-  var u = url + '?d=' + encodeURIComponent(b);
+  // Send action both as base64 'd' AND as plain 'action' param — bulletproof
+  var u = url + '?d=' + encodeURIComponent(b) + '&action=' + encodeURIComponent(action);
+  // Also serialize critical payload fields as plain URL params (some GAS versions need this)
+  if(payload){
+    if(payload.adminPin) u += '&adminPin=' + encodeURIComponent(payload.adminPin);
+    if(payload.name)     u += '&name='     + encodeURIComponent(payload.name);
+    if(payload.pin)      u += '&pin='      + encodeURIComponent(payload.pin);
+    if(payload.sheetId)  u += '&sheetId='  + encodeURIComponent(payload.sheetId);
+  }
 
   // Use JSONP exclusively — works on GitHub Pages, local files, and everywhere.
   // fetch() is blocked by CORS when hosted on external domains (GitHub Pages).
