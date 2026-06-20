@@ -369,24 +369,30 @@ button:disabled{opacity:.5;cursor:default;}
       <div class="aform" style="border:2px solid var(--gold);background:rgba(215,144,104,.04);">
         <div class="aform-title">🔗 Step 1 — Connect to Google Apps Script</div>
         <p style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.6;">
-          Paste your <strong>TimeCommand GAS deployment URL</strong> here. Make sure you deployed a <strong>New Version</strong> in Apps Script (not just Save).
+          Use your <strong>same POS GAS URL</strong> — TimeCommand routes are now built into it. Just paste the URL and test.
         </p>
-        <div class="fg"><label class="fl">Deployment URL</label>
+        <div class="fg"><label class="fl">POS GAS Deployment URL</label>
           <input class="fi" id="gas-url-input" placeholder="https://script.google.com/macros/s/…/exec">
         </div>
         <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap;">
           <button class="btn btn-t" onclick="saveGasUrl()">💾 Save & Test Connection</button>
-          <span id="gas-test-result" style="font-size:11px;color:var(--muted);"></span>
+          <span id="gas-test-result" style="font-size:11px;"></span>
         </div>
         <div id="gas-ping-detail" style="display:none;margin-top:10px;background:var(--light);border-radius:8px;padding:10px;font-size:10px;font-family:monospace;color:var(--muted);word-break:break-all;"></div>
       </div>
       <div class="aform">
-        <div class="aform-title">⚙ Step 2 — Initialize Sheets</div>
-        <p style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.6;">
-          Run this <strong>once</strong> after connecting. Creates Staff, TimeLogs, Leave, and Holidays sheets in your Google Sheet.
+        <div class="aform-title">⚙ Step 2 — Initialize Time Tracker Sheets</div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
+          Create a <strong>new blank Google Sheet</strong> for time tracker data. Copy its ID from the URL:<br>
+          <code style="font-size:10px;background:var(--light);padding:2px 6px;border-radius:4px;">docs.google.com/spreadsheets/d/<strong>SHEET_ID_HERE</strong>/edit</code>
         </p>
-        <button class="btn btn-t" onclick="runInitSheets()">🗄 Initialize Sheets</button>
-        <span id="init-result" style="font-size:11px;color:var(--muted);margin-left:8px;"></span>
+        <div class="fg"><label class="fl">Google Sheet ID (for time tracker data)</label>
+          <input class="fi" id="tc-sheet-id" placeholder="Paste the Sheet ID here (not the full URL)">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+          <button class="btn btn-t" onclick="runInitSheets()">🗄 Initialize Time Tracker Sheets</button>
+          <span id="init-result" style="font-size:11px;color:var(--muted);"></span>
+        </div>
       </div>
       <div class="aform">
         <div class="aform-title">🔐 Change Admin PIN</div>
@@ -1125,10 +1131,12 @@ async function saveGasUrl(){
 }
 
 async function runInitSheets(){
+  var sheetId = (document.getElementById('tc-sheet-id')?.value||'').trim();
+  if(!sheetId){ showToast('Paste your Google Sheet ID first.'); return; }
   var res = document.getElementById('init-result');
-  res.textContent = '⏳ Initializing…';
+  res.textContent = '⏳ Creating sheets…';
   try{
-    var r = await gas('initSheets');
+    var r = await gas('tc_init', {adminPin: ADMIN_PIN_STORED, sheetId: sheetId});
     if(r.ok){ res.style.color='var(--success)'; res.textContent='✅ '+r.message; }
     else{ res.style.color='var(--danger)'; res.textContent='⚠ '+(r.error||'Error'); }
   }catch(e){ res.style.color='var(--danger)'; res.textContent='❌ '+e.message; }
