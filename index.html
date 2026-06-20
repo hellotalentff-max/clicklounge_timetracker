@@ -366,22 +366,35 @@ button:disabled{opacity:.5;cursor:default;}
 
     <!-- SETTINGS -->
     <div id="apanel-set" style="display:none;">
+      <div class="aform" style="border:2px solid var(--gold);background:rgba(215,144,104,.04);">
+        <div class="aform-title">🔗 Step 1 — Connect to Google Apps Script</div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.6;">
+          Paste your <strong>TimeCommand GAS deployment URL</strong> here. Make sure you deployed a <strong>New Version</strong> in Apps Script (not just Save).
+        </p>
+        <div class="fg"><label class="fl">Deployment URL</label>
+          <input class="fi" id="gas-url-input" placeholder="https://script.google.com/macros/s/…/exec">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-t" onclick="saveGasUrl()">💾 Save & Test Connection</button>
+          <span id="gas-test-result" style="font-size:11px;color:var(--muted);"></span>
+        </div>
+        <div id="gas-ping-detail" style="display:none;margin-top:10px;background:var(--light);border-radius:8px;padding:10px;font-size:10px;font-family:monospace;color:var(--muted);word-break:break-all;"></div>
+      </div>
+      <div class="aform">
+        <div class="aform-title">⚙ Step 2 — Initialize Sheets</div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.6;">
+          Run this <strong>once</strong> after connecting. Creates Staff, TimeLogs, Leave, and Holidays sheets in your Google Sheet.
+        </p>
+        <button class="btn btn-t" onclick="runInitSheets()">🗄 Initialize Sheets</button>
+        <span id="init-result" style="font-size:11px;color:var(--muted);margin-left:8px;"></span>
+      </div>
       <div class="aform">
         <div class="aform-title">🔐 Change Admin PIN</div>
-        <div class="fg"><label class="fl">Current PIN</label><input class="fi" type="password" id="set-cur" maxlength="4"></div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:12px;">Default PIN is <strong>5678</strong>. Change it after first login.</p>
+        <div class="fg"><label class="fl">Current PIN</label><input class="fi" type="password" id="set-cur" maxlength="4" placeholder="Current 4-digit PIN"></div>
         <div class="fg"><label class="fl">New PIN (4 digits)</label><input class="fi" type="number" id="set-new" maxlength="4"></div>
         <div class="fg"><label class="fl">Confirm New PIN</label><input class="fi" type="number" id="set-con" maxlength="4"></div>
         <button class="btn btn-t" onclick="changeAdminPin()">Update PIN</button>
-      </div>
-      <div class="aform">
-        <div class="aform-title">🔗 GAS URL</div>
-        <div class="fg"><label class="fl">Apps Script Deployment URL</label>
-          <input class="fi" id="gas-url-input" placeholder="https://script.google.com/…">
-        </div>
-        <div style="display:flex;gap:8px;margin-top:8px;">
-          <button class="btn btn-t" onclick="saveGasUrl()">Save & Test</button>
-          <span id="gas-test-result" style="font-size:11px;color:var(--muted);line-height:1;display:flex;align-items:center;"></span>
-        </div>
       </div>
     </div>
   </div>
@@ -1088,12 +1101,37 @@ async function saveGasUrl(){
   GAS_URL = url;
   localStorage.setItem('tc_gas_url', url);
   var res = document.getElementById('gas-test-result');
-  res.textContent = '⏳ Testing…';
+  var detail = document.getElementById('gas-ping-detail');
+  res.textContent = '⏳ Testing connection…';
+  detail.style.display = 'none';
   try{
-    var r = await gas('getStaffNames');
-    if(r.ok){ res.textContent = '✅ Connected! '+((r.staff||[]).length)+' staff found.'; loadStaffNames(); }
-    else res.textContent = '⚠ '+(r.error||'Unknown error');
-  }catch(e){ res.textContent = '❌ '+e.message; }
+    var r = await gas('ping');
+    if(r.ok && r.service==='TimeCommand'){
+      res.style.color='var(--success)';
+      res.textContent = '✅ Connected! '+r.routes.length+' routes available.';
+      detail.style.display='block';
+      detail.textContent = JSON.stringify(r, null, 2);
+      loadStaffNames();
+    } else {
+      res.style.color='var(--danger)';
+      res.textContent = '⚠ Connected but got unexpected response — check you copied the right URL.';
+      detail.style.display='block';
+      detail.textContent = JSON.stringify(r);
+    }
+  }catch(e){
+    res.style.color='var(--danger)';
+    res.textContent = '❌ '+e.message+' — Make sure the GAS is deployed as Web App (Anyone can access).';
+  }
+}
+
+async function runInitSheets(){
+  var res = document.getElementById('init-result');
+  res.textContent = '⏳ Initializing…';
+  try{
+    var r = await gas('initSheets');
+    if(r.ok){ res.style.color='var(--success)'; res.textContent='✅ '+r.message; }
+    else{ res.style.color='var(--danger)'; res.textContent='⚠ '+(r.error||'Error'); }
+  }catch(e){ res.style.color='var(--danger)'; res.textContent='❌ '+e.message; }
 }
 
 
@@ -1141,6 +1179,11 @@ function showToast(msg){
   var lf = document.getElementById('lv-from'), lt = document.getElementById('lv-to');
   if(lf) lf.value = today;
   if(lt) lt.value = today;
+  // If no GAS URL saved, show setup hint below admin link
+  if(!GAS_URL){
+    var al = document.querySelector('.admin-link');
+    if(al) al.insertAdjacentHTML('afterend','<div style="color:rgba(215,144,104,.6);font-size:11px;text-align:center;margin-top:8px;">⚠ GAS URL not set — tap Admin Access → Settings to connect</div>');
+  }
 })();
 
 loadStaffNames();
