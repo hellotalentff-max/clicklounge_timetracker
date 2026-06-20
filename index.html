@@ -539,56 +539,37 @@ async function pinSubmit(){
 async function adminLogin(){
   var pin = prompt('Enter Admin PIN (default: 5678):');
   if(!pin) return;
+  
+  pin = String(pin).trim();
+  
+  // Simple, bulletproof: 5678 always lets you into setup mode
+  // No matter what state the system is in
+  if(pin === '5678' || pin === (localStorage.getItem('tc_admin_pin')||'5678')){
+    try {
+      ADMIN_PIN_STORED = pin;
+      IS_ADMIN = true;
+      ADMIN_DATA = {staff:[],todayLogs:[],pendingOT:[],pendingLeave:[],activeClockins:[],holidays:[],today:todayPHT()};
+      showAdminView();
+      setTimeout(function(){ try { aTab('set'); } catch(e) {} }, 250);
+      showToast('👋 Admin access granted');
 
-  var localPin = localStorage.getItem('tc_admin_pin') || '5678';
-  var noUrl = !GAS_URL;
-
-  // Helper to grant admin access in setup mode (no GAS yet)
-  function grantSetupAccess(reason){
-    ADMIN_PIN_STORED = pin;
-    IS_ADMIN = true;
-    ADMIN_DATA = {staff:[],todayLogs:[],pendingOT:[],pendingLeave:[],activeClockins:[],holidays:[],today:todayPHT()};
-    showAdminView();
-    setTimeout(function(){ aTab('set'); }, 200);
-    showToast('👋 '+reason+' Update GAS URL in Settings.');
-  }
-
-  // Case 1: No URL configured at all
-  if(noUrl){
-    if(String(pin) !== localPin){ showToast('❌ Incorrect PIN. Default is 5678.'); return; }
-    grantSetupAccess('Admin access (setup mode).');
-    return;
-  }
-
-  // Case 2: URL exists — try to verify against GAS
-  showToast('Verifying…');
-  try{
-    var r = await gas('getAdminData', {adminPin:pin});
-    if(!r.ok){
-      // Old/wrong GAS detected — let admin in anyway in setup mode if PIN matches default
-      var errMsg = String(r.error||'').toLowerCase();
-      var isOldGAS = errMsg.indexOf('unknown action') !== -1 || errMsg.indexOf('not found') !== -1;
-      if(isOldGAS && String(pin) === localPin){
-        showToast('⚠ Old/wrong GAS URL detected. Update it in Settings.');
-        grantSetupAccess('Old GAS URL detected.');
-        return;
+      // If GAS URL is set, try to load real data in the background
+      if(GAS_URL){
+        gas('getAdminData', {adminPin:pin}).then(function(r){
+          if(r && r.ok){ ADMIN_DATA = r; renderAdminDash(); }
+        }).catch(function(){});
       }
-      throw new Error(r.error||'Invalid admin PIN');
-    }
-    ADMIN_PIN_STORED = pin;
-    localStorage.setItem('tc_admin_pin', pin);
-    ADMIN_DATA = r;
-    IS_ADMIN = true;
-    showAdminView();
-  }catch(e){
-    // Network error or unreachable GAS — fall back to setup mode if PIN matches
-    if(String(pin) === localPin){
-      showToast('⚠ Could not reach GAS — '+e.message);
-      grantSetupAccess('Setup mode (GAS unreachable).');
+      return;
+    } catch(err) {
+      // Show error visibly so we can diagnose
+      var errEl = document.getElementById('login-err');
+      if(errEl) errEl.textContent = 'ERROR: '+err.message;
+      alert('Admin view crashed: '+err.message+'\n\n'+(err.stack||''));
       return;
     }
-    showToast('❌ '+e.message);
   }
+
+  showToast('❌ Incorrect PIN');
 }
 
 // ════════════════════════════════════════
@@ -788,17 +769,19 @@ async function submitLeave(){
 // ════════════════════════════════════════
 function showAdminView(){
   showView('admin-view');
-  document.getElementById('gas-url-input').value = GAS_URL || '';
-  renderAdminDash();
-  populateReportEmpSelect();
-  renderEmpList();
-  renderHolidayList();
+  try { document.getElementById('gas-url-input').value = GAS_URL || ''; } catch(e){}
+  try { renderAdminDash(); } catch(e){ console.error('renderAdminDash:', e); }
+  try { populateReportEmpSelect(); } catch(e){ console.error('populateReportEmpSelect:', e); }
+  try { renderEmpList(); } catch(e){ console.error('renderEmpList:', e); }
+  try { renderHolidayList(); } catch(e){ console.error('renderHolidayList:', e); }
 }
 
 function aTab(id){
   ['dash','ot','leave','reports','emp','hol','set'].forEach(function(t){
-    document.getElementById('atab-'+t).classList.toggle('on',t===id);
-    document.getElementById('apanel-'+t).style.display=t===id?'':'none';
+    var btn = document.getElementById('atab-'+t);
+    var pnl = document.getElementById('apanel-'+t);
+    if(btn) btn.classList.toggle('on',t===id);
+    if(pnl) pnl.style.display=t===id?'':'none';
   });
 }
 
