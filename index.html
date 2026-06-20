@@ -1163,7 +1163,11 @@ async function saveGasUrl(){
     var r = await gas('ping');
     if(r.ok && r.service && String(r.service).indexOf('TimeCommand')!==-1){
       res.style.color='var(--success)';
-      res.textContent = '✅ Connected! '+r.routes.length+' routes available.';
+      var routeCount = r.routes ? r.routes.length : '';
+      var msg = r.sheet_linked ? '✅ Connected — Sheet linked!' :
+                r.message ? '✅ '+r.message :
+                '✅ Connected!';
+      res.textContent = msg + (routeCount?' ('+routeCount+' routes)':'');
       detail.style.display='block';
       detail.textContent = JSON.stringify(r, null, 2);
       loadStaffNames();
