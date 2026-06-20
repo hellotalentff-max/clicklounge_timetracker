@@ -182,6 +182,7 @@ button:disabled{opacity:.5;cursor:default;}
     <div class="login-err" id="login-err"></div>
   </div>
   <div class="admin-link" onclick="adminLogin()">🔐 Admin Access</div>
+  <div style="color:rgba(245,240,232,.25);font-size:10px;text-align:center;margin-top:12px;cursor:pointer;" onclick="resetTracker()">⚙ Reset settings</div>
 </div>
 
 <!-- ════════════════════════════════
@@ -539,36 +540,55 @@ async function adminLogin(){
   var pin = prompt('Enter Admin PIN (default: 5678):');
   if(!pin) return;
 
-  // Allow entry if no GAS URL yet (first-time setup) or if PIN matches local stored value
   var localPin = localStorage.getItem('tc_admin_pin') || '5678';
   var noUrl = !GAS_URL;
 
-  if(noUrl){
-    // First-time setup — accept default PIN locally, skip GAS call
-    if(String(pin) !== localPin){
-      showToast('❌ Incorrect PIN. Default is 5678.'); return;
-    }
+  // Helper to grant admin access in setup mode (no GAS yet)
+  function grantSetupAccess(reason){
     ADMIN_PIN_STORED = pin;
     IS_ADMIN = true;
     ADMIN_DATA = {staff:[],todayLogs:[],pendingOT:[],pendingLeave:[],activeClockins:[],holidays:[],today:todayPHT()};
     showAdminView();
-    // Jump straight to settings
     setTimeout(function(){ aTab('set'); }, 200);
-    showToast('👋 Admin access. Set your GAS URL in Settings first.');
+    showToast('👋 '+reason+' Update GAS URL in Settings.');
+  }
+
+  // Case 1: No URL configured at all
+  if(noUrl){
+    if(String(pin) !== localPin){ showToast('❌ Incorrect PIN. Default is 5678.'); return; }
+    grantSetupAccess('Admin access (setup mode).');
     return;
   }
 
-  // GAS URL is set — verify PIN against GAS and load full data
+  // Case 2: URL exists — try to verify against GAS
   showToast('Verifying…');
   try{
     var r = await gas('getAdminData', {adminPin:pin});
-    if(!r.ok) throw new Error(r.error||'Invalid admin PIN');
+    if(!r.ok){
+      // Old/wrong GAS detected — let admin in anyway in setup mode if PIN matches default
+      var errMsg = String(r.error||'').toLowerCase();
+      var isOldGAS = errMsg.indexOf('unknown action') !== -1 || errMsg.indexOf('not found') !== -1;
+      if(isOldGAS && String(pin) === localPin){
+        showToast('⚠ Old/wrong GAS URL detected. Update it in Settings.');
+        grantSetupAccess('Old GAS URL detected.');
+        return;
+      }
+      throw new Error(r.error||'Invalid admin PIN');
+    }
     ADMIN_PIN_STORED = pin;
-    localStorage.setItem('tc_admin_pin', pin); // cache PIN locally
+    localStorage.setItem('tc_admin_pin', pin);
     ADMIN_DATA = r;
     IS_ADMIN = true;
     showAdminView();
-  }catch(e){ showToast('❌ '+e.message); }
+  }catch(e){
+    // Network error or unreachable GAS — fall back to setup mode if PIN matches
+    if(String(pin) === localPin){
+      showToast('⚠ Could not reach GAS — '+e.message);
+      grantSetupAccess('Setup mode (GAS unreachable).');
+      return;
+    }
+    showToast('❌ '+e.message);
+  }
 }
 
 // ════════════════════════════════════════
@@ -1209,6 +1229,14 @@ async function saveBonusModal(){
 //  UTILS
 // ════════════════════════════════════════
 function todayPHT(){ return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'}); }
+function resetTracker(){
+  if(!confirm('Reset all saved settings (GAS URL, admin PIN)? You will need to re-enter them.')) return;
+  localStorage.removeItem('tc_gas_url');
+  localStorage.removeItem('tc_admin_pin');
+  GAS_URL = '';
+  alert('✅ Settings cleared. Reload the page and use admin PIN 5678.');
+  location.reload();
+}
 function showToast(msg){
   var t = document.getElementById('toast');
   t.textContent = msg;
