@@ -145,6 +145,16 @@ button:disabled{opacity:.5;cursor:default;}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--slate);color:var(--cream);padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:999;transition:transform .3s;pointer-events:none;white-space:nowrap;}
 .toast.show{transform:translateX(-50%) translateY(0);}
 
+/* Tier badges */
+.tier-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;display:inline-block;}
+.tier-trainee{background:rgba(107,140,140,.12);color:#6b8c8c;}
+.tier-junior{background:rgba(74,127,181,.12);color:#4a7fb5;}
+.tier-mid,.tier-mid-level{background:rgba(81,137,125,.12);color:#51897d;}
+.tier-senior{background:rgba(215,144,104,.12);color:#d79068;}
+.tier-lead{background:rgba(184,134,11,.12);color:#b8860b;}
+.tier-manager{background:rgba(91,99,217,.12);color:#5b63d9;}
+.tier-director{background:rgba(192,84,74,.12);color:#c0544a;}
+
 /* Report */
 .report-card{background:var(--white);border-radius:14px;padding:18px;border:1px solid var(--border);margin-bottom:14px;}
 .report-name{font-size:14px;font-weight:700;color:var(--dark);margin-bottom:10px;border-bottom:2px solid var(--teal);padding-bottom:8px;}
@@ -441,6 +451,7 @@ button:disabled{opacity:.5;cursor:default;}
         <button class="emp-mtab"    data-tab="hr"      onclick="empMTab('hr')">🏛 HR / Gov't</button>
         <button class="emp-mtab"    data-tab="contract" onclick="empMTab('contract')">📜 Contract</button>
         <button class="emp-mtab"    data-tab="eval"    onclick="empMTab('eval')">⭐ Evaluation</button>
+        <button class="emp-mtab"    data-tab="career"  onclick="empMTab('career')">📈 Career</button>
       </div>
 
       <!-- Basic Tab -->
@@ -448,6 +459,18 @@ button:disabled{opacity:.5;cursor:default;}
         <div class="aform-grid">
           <div class="fg"><label class="fl">Full Name *</label><input class="fi" id="ef-name" placeholder="e.g. Juan dela Cruz"></div>
           <div class="fg"><label class="fl">Role / Position *</label><input class="fi" id="ef-role" placeholder="e.g. Photographer"></div>
+          <div class="fg"><label class="fl">Tier / Level</label>
+            <select class="fi" id="ef-tier">
+              <option value="">— select —</option>
+              <option value="Trainee">Trainee</option>
+              <option value="Junior">Junior</option>
+              <option value="Mid">Mid-Level</option>
+              <option value="Senior">Senior</option>
+              <option value="Lead">Lead</option>
+              <option value="Manager">Manager</option>
+              <option value="Director">Director</option>
+            </select>
+          </div>
           <div class="fg"><label class="fl">Type</label>
             <select class="fi" id="ef-type"><option value="full-time">Full-time</option><option value="part-time">Part-time</option><option value="on-call">On-call</option><option value="contractor">Contractor</option></select>
           </div>
@@ -533,6 +556,59 @@ button:disabled{opacity:.5;cursor:default;}
             <textarea class="fi" id="ef-notes-hr" rows="5" placeholder="Performance reviews, disciplinary records, commendations…"></textarea>
           </div>
         </div>
+      </div>
+
+      <!-- Career / Employment History Tab -->
+      <div class="emp-mpanel" data-tab="career" style="display:none;">
+        <div style="background:var(--light);border-radius:10px;padding:14px;margin-bottom:14px;">
+          <div style="font-size:12px;font-weight:700;margin-bottom:10px;">➕ Log Career Event</div>
+          <div class="aform-grid" style="grid-template-columns:repeat(2,1fr);">
+            <div class="fg"><label class="fl">Event Type *</label>
+              <select class="fi" id="ce-type">
+                <option value="">— select —</option>
+                <option value="promotion">📈 Promotion</option>
+                <option value="demotion">📉 Demotion</option>
+                <option value="role-change">↔️ Role Change</option>
+                <option value="rate-change">💰 Rate Adjustment</option>
+                <option value="tier-change">🎯 Tier Change</option>
+                <option value="warning">⚠️ Warning</option>
+                <option value="commendation">🏆 Commendation</option>
+                <option value="suspension">⏸ Suspension</option>
+                <option value="termination">🛑 Termination</option>
+                <option value="resignation">📤 Resignation</option>
+                <option value="contract-renewal">🔄 Contract Renewal</option>
+                <option value="regularization">✅ Regularization</option>
+              </select>
+            </div>
+            <div class="fg"><label class="fl">Effective Date</label><input class="fi" id="ce-date" type="date"></div>
+            <div class="fg"><label class="fl">New Role</label><input class="fi" id="ce-role" placeholder="Leave blank if no role change"></div>
+            <div class="fg"><label class="fl">New Tier</label>
+              <select class="fi" id="ce-tier">
+                <option value="">— no change —</option>
+                <option value="Trainee">Trainee</option>
+                <option value="Junior">Junior</option>
+                <option value="Mid">Mid-Level</option>
+                <option value="Senior">Senior</option>
+                <option value="Lead">Lead</option>
+                <option value="Manager">Manager</option>
+                <option value="Director">Director</option>
+              </select>
+            </div>
+            <div class="fg"><label class="fl">New Hourly Rate (₱)</label><input class="fi" id="ce-rate" type="number" placeholder="Leave blank if no change"></div>
+            <div class="fg"><label class="fl">Approved By</label><input class="fi" id="ce-approver" placeholder="Admin / Manager name"></div>
+            <div class="fg" style="grid-column:1/-1;"><label class="fl">Reason / Justification</label>
+              <textarea class="fi" id="ce-reason" rows="2" placeholder="Why is this change happening?"></textarea>
+            </div>
+            <div class="fg" style="grid-column:1/-1;"><label class="fl">Notes</label>
+              <input class="fi" id="ce-notes" placeholder="Optional additional notes">
+            </div>
+          </div>
+          <button class="btn btn-t" style="margin-top:10px;" onclick="logCareerEvent()">💾 Log Event &amp; Apply Changes</button>
+          <div style="font-size:10px;color:var(--muted);margin-top:6px;">Logging an event will automatically update the employee's role/tier/rate to the new values.</div>
+        </div>
+
+        <div style="font-size:12px;font-weight:700;margin-bottom:8px;">📜 Employment History</div>
+        <div id="ce-history-list"><p style="font-size:11px;color:var(--muted);">No career events logged yet.</p></div>
       </div>
 
       <!-- Actions -->
@@ -1147,20 +1223,25 @@ function filterEmpList(){
   var el = document.getElementById('emp-list');
   if(!staff.length){ el.innerHTML='<p style="color:var(--muted);font-size:12px;padding:12px;">No employees yet. Click ➕ Add Employee above.</p>'; return; }
   if(!list.length){ el.innerHTML='<p style="color:var(--muted);font-size:12px;padding:12px;">No matches.</p>'; return; }
-  el.innerHTML='<table class="a-table"><thead><tr><th>Name</th><th>Role</th><th>Type</th><th>Rate/hr</th><th>Shift</th><th>Leave Bal</th><th class="hm">Contact</th><th>Status</th><th>Action</th></tr></thead><tbody>'+
+  el.innerHTML='<table class="a-table"><thead><tr><th>Name</th><th>Role</th><th>Tier</th><th>Type</th><th>Rate/hr</th><th class="hm">Shift</th><th class="hm">Leave Bal</th><th class="hm">Contact</th><th>Status</th><th>Action</th></tr></thead><tbody>'+
     list.map(function(s){
-      var contact = (s.email||s.phone||'<span style="color:var(--muted);">—</span>');
+      var emailPart = s.email ? '<div>'+esc(s.email)+'</div>' : '';
+      var phonePart = s.phone ? '<div style="color:var(--muted);font-size:10px;">'+esc(s.phone)+'</div>' : '';
+      var contact = (emailPart+phonePart) || '<span style="color:var(--muted);">—</span>';
+      var tier = s.tier || '';
+      var tierBadge = tier ? '<span class="tier-badge tier-'+tier.toLowerCase().replace(/\s+/g,'-')+'">'+esc(tier)+'</span>' : '<span style="color:var(--muted);font-size:10px;">—</span>';
       var status = s.status==='inactive' ? '<span class="badge-danger">Inactive</span>' :
                    s.status==='on-leave' ? '<span class="badge-warn">On Leave</span>' :
                    '<span class="badge-ok">Active</span>';
       return '<tr onclick="openEmpModal(\''+escAttr(s.name)+'\')" style="cursor:pointer;">'+
         '<td><strong>'+esc(s.name)+'</strong></td>'+
         '<td>'+esc(s.role||'—')+'</td>'+
+        '<td>'+tierBadge+'</td>'+
         '<td><span class="badge-info">'+esc(s.type||'—')+'</span></td>'+
         '<td>₱'+(parseFloat(s.rate||0)).toLocaleString()+'</td>'+
-        '<td style="font-size:10px;">'+(s.shiftType==='fixed'?(s.shiftStart||'?')+'–'+(s.shiftEnd||'?'):'Flexible')+'</td>'+
-        '<td style="font-size:10px;">SL:'+(s.slBal||0)+' VL:'+(s.vlBal||0)+' EL:'+(s.elBal||0)+'</td>'+
-        '<td class="hm" style="font-size:11px;">'+esc(contact)+'</td>'+
+        '<td class="hm" style="font-size:10px;">'+(s.shiftType==='fixed'?(s.shiftStart||'?')+'–'+(s.shiftEnd||'?'):'Flexible')+'</td>'+
+        '<td class="hm" style="font-size:10px;">SL:'+(s.slBal||0)+' VL:'+(s.vlBal||0)+' EL:'+(s.elBal||0)+'</td>'+
+        '<td class="hm" style="font-size:11px;">'+contact+'</td>'+
         '<td>'+status+'</td>'+
         '<td onclick="event.stopPropagation()" style="display:flex;gap:4px;">'+
           '<button class="btn btn-sm" onclick="openEmpModal(\''+escAttr(s.name)+'\')" title="Edit">✏</button>'+
@@ -1185,9 +1266,12 @@ function openEmpModal(name){
   var fields = ['ef-id','ef-name','ef-role','ef-pin','ef-rate','ef-email','ef-phone','ef-birthday','ef-hired','ef-address',
     'ef-emergency-contact','ef-emergency-phone','ef-emergency-rel','ef-start','ef-end','ef-notes',
     'ef-sss','ef-philhealth','ef-pagibig','ef-tin','ef-bank-name','ef-bank-account',
-    'ef-contract-start','ef-contract-end','ef-resume-url','ef-photo-url','ef-eval-score','ef-eval-date','ef-notes-hr','ef-edit-name'];
+    'ef-contract-start','ef-contract-end','ef-resume-url','ef-photo-url','ef-eval-score','ef-eval-date','ef-notes-hr','ef-edit-name',
+    'ce-type','ce-date','ce-role','ce-rate','ce-approver','ce-reason','ce-notes'];
   fields.forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('ef-type').value = 'full-time';
+  document.getElementById('ef-tier').value = '';
+  document.getElementById('ce-tier').value = '';
   document.getElementById('ef-status').value = 'active';
   document.getElementById('ef-shift').value = 'flexible';
   document.getElementById('ef-sl').value = '5';
@@ -1205,6 +1289,7 @@ function openEmpModal(name){
     document.getElementById('ef-name').value        = s.name;
     document.getElementById('ef-name').readOnly     = true;
     document.getElementById('ef-role').value        = s.role || '';
+    document.getElementById('ef-tier').value        = s.tier || '';
     document.getElementById('ef-type').value        = s.type || 'full-time';
     document.getElementById('ef-status').value      = s.status || 'active';
     document.getElementById('ef-pin').value         = s.pin || '';
@@ -1239,12 +1324,97 @@ function openEmpModal(name){
     document.getElementById('ef-eval-date').value   = s.lastEvaluationDate || '';
     document.getElementById('ef-notes-hr').value    = s.notesHr || '';
     document.getElementById('emp-delete-btn').style.display = '';
+    renderCareerHistory(s.name);
+    // Pre-fill career event date with today
+    document.getElementById('ce-date').value = todayPHT();
   } else {
     document.getElementById('emp-modal-title').textContent = '➕ Add Employee';
     document.getElementById('ef-name').readOnly = false;
+    document.getElementById('ce-history-list').innerHTML = '<p style="font-size:11px;color:var(--muted);">Save the employee first to log career events.</p>';
   }
   empMTab('basic');
   document.getElementById('emp-modal-bg').classList.add('open');
+}
+
+function renderCareerHistory(name){
+  var el = document.getElementById('ce-history-list');
+  if(!el) return;
+  var history = (ADMIN_DATA.history||[]).filter(function(h){ return h.employee === name; });
+  history.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+  if(!history.length){
+    el.innerHTML = '<p style="font-size:11px;color:var(--muted);padding:8px;">No career events logged yet.</p>';
+    return;
+  }
+  var icons = {hire:'🎉',promotion:'📈',demotion:'📉','role-change':'↔️','rate-change':'💰','tier-change':'🎯',warning:'⚠️',commendation:'🏆',suspension:'⏸',termination:'🛑',resignation:'📤','contract-renewal':'🔄',regularization:'✅'};
+  el.innerHTML = history.map(function(h){
+    var icon = icons[h.eventType] || '📌';
+    var changes = [];
+    if(h.fromRole !== h.toRole && h.toRole) changes.push('Role: <strong>'+esc(h.fromRole||'—')+' → '+esc(h.toRole)+'</strong>');
+    if(h.fromTier !== h.toTier && h.toTier) changes.push('Tier: <strong>'+esc(h.fromTier||'—')+' → '+esc(h.toTier)+'</strong>');
+    if(parseFloat(h.fromRate||0) !== parseFloat(h.toRate||0) && h.toRate) changes.push('Rate: <strong>₱'+parseFloat(h.fromRate||0).toLocaleString()+' → ₱'+parseFloat(h.toRate).toLocaleString()+'</strong>');
+    return '<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-bottom:8px;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">'+
+        '<div style="flex:1;">'+
+          '<div style="font-size:12px;font-weight:700;text-transform:capitalize;">'+icon+' '+esc(h.eventType.replace(/-/g,' '))+'</div>'+
+          (changes.length ? '<div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.6;">'+changes.join('<br>')+'</div>' : '')+
+          (h.reason ? '<div style="font-size:11px;color:var(--slate);margin-top:4px;font-style:italic;">"'+esc(h.reason)+'"</div>' : '')+
+          '<div style="font-size:10px;color:var(--muted);margin-top:6px;">Effective: '+esc(h.effectiveDate||h.date)+' · Approved by '+esc(h.approvedBy||'—')+'</div>'+
+        '</div>'+
+        '<button class="btn btn-d btn-sm" onclick="deleteCareerEvent(\''+escAttr(h.id)+'\',\''+escAttr(name)+'\')" title="Remove event">🗑</button>'+
+      '</div></div>';
+  }).join('');
+}
+
+async function logCareerEvent(){
+  var name = document.getElementById('ef-edit-name').value;
+  if(!name){ showToast('Save the employee first.'); return; }
+  var type = document.getElementById('ce-type').value;
+  if(!type){ showToast('Select an event type.'); return; }
+  var s = (ADMIN_DATA.staff||[]).find(function(x){ return x.name===name; });
+  if(!s) return;
+  var newRole = document.getElementById('ce-role').value.trim();
+  var newTier = document.getElementById('ce-tier').value;
+  var newRate = document.getElementById('ce-rate').value;
+  var payload = {
+    adminPin: ADMIN_PIN_STORED,
+    employee: name,
+    eventType: type,
+    fromRole: s.role || '',
+    toRole: newRole || s.role || '',
+    fromTier: s.tier || '',
+    toTier: newTier || s.tier || '',
+    fromRate: s.rate || 0,
+    toRate: newRate || s.rate || 0,
+    effectiveDate: document.getElementById('ce-date').value || todayPHT(),
+    reason: document.getElementById('ce-reason').value.trim(),
+    approvedBy: document.getElementById('ce-approver').value.trim() || 'Admin',
+    notes: document.getElementById('ce-notes').value.trim()
+  };
+  showToast('Logging event…');
+  try{
+    var r = await gas('logEmployment', payload);
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ '+r.message);
+    // Clear career form
+    ['ce-type','ce-role','ce-rate','ce-reason','ce-notes','ce-approver'].forEach(function(id){ document.getElementById(id).value=''; });
+    document.getElementById('ce-tier').value = '';
+    document.getElementById('ce-date').value = todayPHT();
+    await refreshAdminData();
+    // Reload employee data in modal
+    openEmpModal(name);
+    empMTab('career');
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function deleteCareerEvent(id, name){
+  if(!confirm('Remove this career event from history? (Does not undo the role/tier/rate changes)')) return;
+  try{
+    var r = await gas('deleteEmploymentEvent', {adminPin:ADMIN_PIN_STORED, id:id});
+    if(!r.ok) throw new Error(r.error);
+    showToast('🗑 Event removed');
+    await refreshAdminData();
+    renderCareerHistory(name);
+  }catch(e){ showToast('❌ '+e.message); }
 }
 
 function closeEmpModal(){
@@ -1265,6 +1435,7 @@ async function saveEmployee(){
   var payload = {
     adminPin:ADMIN_PIN_STORED, name:name,
     role:document.getElementById('ef-role').value,
+    tier:document.getElementById('ef-tier').value,
     type:document.getElementById('ef-type').value,
     status:document.getElementById('ef-status').value,
     pin:pin, rate:rate,
