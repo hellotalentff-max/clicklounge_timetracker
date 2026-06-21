@@ -281,6 +281,7 @@ button:disabled{opacity:.5;cursor:default;}
   </div>
   <div class="admin-tabs">
     <button class="atab on" onclick="aTab('dash')" id="atab-dash">📊 Dashboard</button>
+    <button class="atab" onclick="aTab('logs')" id="atab-logs">🕐 Time Logs</button>
     <button class="atab" onclick="aTab('ot')" id="atab-ot">⚠ OT <span class="badge-n" id="ot-badge" style="display:none">0</span></button>
     <button class="atab" onclick="aTab('leave')" id="atab-leave">📅 Leave <span class="badge-n" id="lv-badge" style="display:none">0</span></button>
     <button class="atab" onclick="aTab('reports')" id="atab-reports">📄 Reports</button>
@@ -295,6 +296,20 @@ button:disabled{opacity:.5;cursor:default;}
       <div class="a-kpi-row" id="a-kpis"></div>
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px;">Today's Attendance</div>
       <div id="a-today-table"></div>
+    </div>
+
+    <!-- TIME LOGS -->
+    <div id="apanel-logs" style="display:none;">
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+        <select class="sel" id="logs-emp-filter" onchange="renderLogsList()" style="padding:9px 12px;">
+          <option value="">All employees</option>
+        </select>
+        <input class="fi" id="logs-date-from" type="date" style="max-width:160px;" onchange="renderLogsList()">
+        <span style="color:var(--muted);font-size:11px;">to</span>
+        <input class="fi" id="logs-date-to" type="date" style="max-width:160px;" onchange="renderLogsList()">
+        <button class="btn btn-t" onclick="openLogModal()">➕ Add Manual Log</button>
+      </div>
+      <div id="logs-list"></div>
     </div>
 
     <!-- OT APPROVALS -->
@@ -433,6 +448,49 @@ button:disabled{opacity:.5;cursor:default;}
     </div>
   </div>
 </div>
+<!-- ── Manual Log Modal ── -->
+<div class="pm-bg" id="log-modal-bg" onclick="if(event.target===this)closeLogModal()">
+  <div class="pm" style="max-width:560px;">
+    <div class="pm-h">
+      <span id="log-modal-title">➕ Add Manual Time Log</span>
+      <button onclick="closeLogModal()" style="background:rgba(255,255,255,.12);border:none;color:var(--cream);border-radius:6px;padding:4px 10px;cursor:pointer;">✕</button>
+    </div>
+    <div class="pm-b">
+      <input type="hidden" id="lf-id">
+      <div class="aform-grid">
+        <div class="fg" style="grid-column:1/-1;"><label class="fl">Employee *</label>
+          <select class="fi" id="lf-emp"></select>
+        </div>
+        <div class="fg"><label class="fl">Date *</label><input class="fi" type="date" id="lf-date"></div>
+        <div class="fg"><label class="fl">Clock In *</label><input class="fi" type="time" id="lf-in"></div>
+        <div class="fg"><label class="fl">Clock Out</label><input class="fi" type="time" id="lf-out"></div>
+        <div class="fg"><label class="fl">Break Minutes</label><input class="fi" type="number" id="lf-break" min="0" placeholder="0"></div>
+        <div class="fg"><label class="fl">Break Start</label><input class="fi" type="time" id="lf-bs"></div>
+        <div class="fg"><label class="fl">Break End</label><input class="fi" type="time" id="lf-be"></div>
+        <div class="fg"><label class="fl">OT Status</label>
+          <select class="fi" id="lf-ot-status">
+            <option value="">— auto —</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="denied">Denied</option>
+          </select>
+        </div>
+        <div class="fg"><label class="fl">Bonus (₱)</label><input class="fi" type="number" id="lf-bonus" min="0" step="0.01" placeholder="0"></div>
+        <div class="fg"><label class="fl">Incentive (₱)</label><input class="fi" type="number" id="lf-incentive" min="0" step="0.01" placeholder="0"></div>
+        <div class="fg" style="grid-column:1/-1;"><label class="fl">Notes</label>
+          <textarea class="fi" id="lf-notes" rows="2" placeholder="Reason for manual entry…"></textarea>
+        </div>
+      </div>
+      <div id="lf-preview" style="background:var(--light);border-radius:8px;padding:10px;margin-top:12px;font-size:11px;color:var(--muted);"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+        <button class="btn btn-d btn-sm" id="lf-delete-btn" onclick="deleteCurrentLog()" style="display:none;margin-right:auto;">🗑 Delete Log</button>
+        <button class="btn" onclick="closeLogModal()">Cancel</button>
+        <button class="btn btn-t" onclick="saveLog()">💾 Save Log</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Employee Modal — full HR profile ── -->
 <div class="pm-bg" id="emp-modal-bg" onclick="if(event.target===this)closeEmpModal()">
   <div class="pm" style="max-width:680px;max-height:92vh;overflow-y:auto;">
@@ -987,12 +1045,13 @@ function showAdminView(){
 }
 
 function aTab(id){
-  ['dash','ot','leave','reports','emp','hol','set'].forEach(function(t){
+  ['dash','logs','ot','leave','reports','emp','hol','set'].forEach(function(t){
     var btn = document.getElementById('atab-'+t);
     var pnl = document.getElementById('apanel-'+t);
     if(btn) btn.classList.toggle('on',t===id);
     if(pnl) pnl.style.display=t===id?'':'none';
   });
+  if(id === 'logs') renderLogsList();
 }
 
 function renderAdminDash(){
@@ -1208,6 +1267,200 @@ function renderReport(report, type, from, to){
 }
 
 // ── EMPLOYEES ──
+// ════════════════════════════════════════
+//  TIME LOGS MANAGEMENT (admin)
+// ════════════════════════════════════════
+function populateLogsEmpFilter(){
+  var sel = document.getElementById('logs-emp-filter');
+  if(!sel) return;
+  var current = sel.value;
+  var staff = (ADMIN_DATA.staff||[]).filter(function(s){ return s.status!=='inactive'; });
+  sel.innerHTML = '<option value="">All employees</option>' +
+    staff.map(function(s){ return '<option value="'+esc(s.name)+'">'+esc(s.name)+'</option>'; }).join('');
+  sel.value = current;
+  // Default date range — current month if empty
+  var df = document.getElementById('logs-date-from'), dt = document.getElementById('logs-date-to');
+  if(df && !df.value){
+    var now = new Date();
+    var y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
+    df.value = y+'-'+m+'-01';
+    dt.value = y+'-'+m+'-'+String(new Date(y, now.getMonth()+1, 0).getDate()).padStart(2,'0');
+  }
+}
+
+async function renderLogsList(){
+  populateLogsEmpFilter();
+  var empF = document.getElementById('logs-emp-filter').value;
+  var from = document.getElementById('logs-date-from').value;
+  var to   = document.getElementById('logs-date-to').value;
+  var el = document.getElementById('logs-list');
+  el.innerHTML = '<p style="color:var(--muted);font-size:12px;padding:12px;">Loading…</p>';
+
+  // We'll use generatePayroll for the date range — it returns logs per employee
+  try{
+    var r = await gas('generatePayroll', {adminPin:ADMIN_PIN_STORED, employee:empF||'', from:from, to:to});
+    if(!r.ok) throw new Error(r.error);
+    var allLogs = [];
+    (r.report||[]).forEach(function(emp){
+      emp.logs.forEach(function(l){ l._employee = emp.name; l._rate = emp.rate; allLogs.push(l); });
+    });
+    // Also include open logs (no clock out) from ADMIN_DATA.todayLogs that aren't in payroll
+    (ADMIN_DATA.todayLogs||[]).forEach(function(l){
+      if(!l.out && (!empF || l.employee === empF)){
+        l._employee = l.employee;
+        allLogs.push(l);
+      }
+    });
+    allLogs.sort(function(a,b){ return (b.date+(b.in||'')).localeCompare(a.date+(a.in||'')); });
+
+    if(!allLogs.length){ el.innerHTML='<p style="color:var(--muted);font-size:12px;padding:12px;">No logs in this date range.</p>'; return; }
+
+    el.innerHTML = '<table class="a-table"><thead><tr><th>Date</th><th>Employee</th><th>In</th><th>Out</th><th>Break</th><th>Worked</th><th>OT</th><th>Bonus</th><th>Incentive</th><th>Pay</th><th>Action</th></tr></thead><tbody>'+
+      allLogs.map(function(l){
+        var hol = l.holiday ? '<div style="font-size:9px;color:var(--gold);">🏖</div>' : '';
+        var otBadge = l.otStatus==='approved' ? '<span class="badge-warn">'+parseFloat(l.otHrs||0).toFixed(1)+'h ✓</span>' :
+                      l.otStatus==='pending'  ? '<span class="badge-danger">'+parseFloat(l.otHrs||0).toFixed(1)+'h ⚠</span>' :
+                      l.otStatus==='denied'   ? '<span style="font-size:10px;color:var(--muted);">'+parseFloat(l.otHrs||0).toFixed(1)+'h ✗</span>' :
+                      '<span style="font-size:10px;color:var(--muted);">—</span>';
+        var bonus = parseFloat(l.bonus||0)>0?'₱'+parseFloat(l.bonus).toLocaleString():'—';
+        var incentive = parseFloat(l.incentive||0)>0?'₱'+parseFloat(l.incentive).toLocaleString():'—';
+        var pay = l.out ? '₱'+parseFloat(l.grossPay||0).toLocaleString() : '<span style="color:var(--teal);font-size:10px;">Live</span>';
+        return '<tr>'+
+          '<td style="font-size:11px;">'+esc(l.date)+hol+'</td>'+
+          '<td><strong>'+esc(l._employee||l.employee)+'</strong></td>'+
+          '<td>'+esc(l.in||'—')+'</td>'+
+          '<td>'+(l.out?esc(l.out):'<span class="badge-ok">Active</span>')+'</td>'+
+          '<td style="font-size:10px;">'+((l.breakMins||0)>0?(l.breakMins||0)+'m':'—')+'</td>'+
+          '<td>'+parseFloat(l.workedHrs||0).toFixed(2)+'h</td>'+
+          '<td>'+otBadge+'</td>'+
+          '<td>'+bonus+'</td>'+
+          '<td>'+incentive+'</td>'+
+          '<td><strong>'+pay+'</strong></td>'+
+          '<td style="display:flex;gap:4px;">'+
+            '<button class="btn btn-sm" onclick="openLogModal(\''+escAttr(l.id)+'\')" title="Edit">✏</button>'+
+            '<button class="btn btn-d btn-sm" onclick="deleteLogRow(\''+escAttr(l.id)+'\')" title="Delete">🗑</button>'+
+          '</td></tr>';
+      }).join('')+'</tbody></table>';
+  }catch(e){
+    el.innerHTML = '<p style="color:var(--danger);font-size:12px;padding:12px;">Error loading logs: '+esc(e.message)+'</p>';
+  }
+}
+
+function openLogModal(logId){
+  // Populate employee dropdown
+  var staff = (ADMIN_DATA.staff||[]).filter(function(s){ return s.status!=='inactive'; });
+  var sel = document.getElementById('lf-emp');
+  sel.innerHTML = '<option value="">— select —</option>' +
+    staff.map(function(s){ return '<option value="'+esc(s.name)+'">'+esc(s.name)+'</option>'; }).join('');
+  // Clear all fields
+  ['lf-id','lf-date','lf-in','lf-out','lf-break','lf-bs','lf-be','lf-bonus','lf-incentive','lf-notes'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.value = '';
+  });
+  document.getElementById('lf-ot-status').value = '';
+  document.getElementById('lf-delete-btn').style.display = 'none';
+  document.getElementById('lf-preview').textContent = '';
+
+  if(logId){
+    // Editing existing log — find it from any source
+    var log = null;
+    // Try today's logs first
+    (ADMIN_DATA.todayLogs||[]).forEach(function(l){ if(l.id===logId) log = l; });
+    // We don't always have full logs in memory — load from server
+    if(!log){
+      gas('generatePayroll', {adminPin:ADMIN_PIN_STORED, from:'2020-01-01', to:'2099-12-31'}).then(function(r){
+        if(r.ok){
+          (r.report||[]).forEach(function(emp){
+            emp.logs.forEach(function(l){ if(l.id===logId){ loadLogIntoForm(l, emp.name); } });
+          });
+        }
+      });
+    } else {
+      loadLogIntoForm(log, log.employee);
+    }
+    document.getElementById('log-modal-title').textContent = '✏ Edit Time Log';
+    document.getElementById('lf-id').value = logId;
+    document.getElementById('lf-delete-btn').style.display = '';
+  } else {
+    document.getElementById('log-modal-title').textContent = '➕ Add Manual Time Log';
+    document.getElementById('lf-date').value = todayPHT();
+  }
+  document.getElementById('log-modal-bg').classList.add('open');
+}
+
+function loadLogIntoForm(log, employee){
+  document.getElementById('lf-emp').value      = employee || log.employee || '';
+  document.getElementById('lf-date').value     = log.date || '';
+  document.getElementById('lf-in').value       = log.in || '';
+  document.getElementById('lf-out').value      = log.out || '';
+  document.getElementById('lf-break').value    = log.breakMins || '';
+  document.getElementById('lf-bs').value       = log.breakStart || '';
+  document.getElementById('lf-be').value       = log.breakEnd || '';
+  document.getElementById('lf-ot-status').value= log.otStatus || '';
+  document.getElementById('lf-bonus').value    = log.bonus || '';
+  document.getElementById('lf-incentive').value= log.incentive || '';
+  document.getElementById('lf-notes').value    = log.notes || '';
+}
+
+function closeLogModal(){ document.getElementById('log-modal-bg').classList.remove('open'); }
+
+async function saveLog(){
+  var emp = document.getElementById('lf-emp').value;
+  var date = document.getElementById('lf-date').value;
+  var inT = document.getElementById('lf-in').value;
+  var outT = document.getElementById('lf-out').value;
+  if(!emp){ showToast('Select an employee.'); return; }
+  if(!date){ showToast('Date is required.'); return; }
+  if(!inT){ showToast('Clock In time is required.'); return; }
+  var payload = {
+    adminPin: ADMIN_PIN_STORED,
+    employee: emp,
+    date: date,
+    in: inT,
+    out: outT,
+    breakMins: document.getElementById('lf-break').value || 0,
+    breakStart: document.getElementById('lf-bs').value,
+    breakEnd: document.getElementById('lf-be').value,
+    otStatus: document.getElementById('lf-ot-status').value,
+    bonus: document.getElementById('lf-bonus').value || 0,
+    incentive: document.getElementById('lf-incentive').value || 0,
+    notes: document.getElementById('lf-notes').value
+  };
+  var logId = document.getElementById('lf-id').value;
+  showToast('Saving log…');
+  try{
+    var r;
+    if(logId){
+      payload.logId = logId;
+      r = await gas('updateLog', payload);
+    } else {
+      r = await gas('addManualLog', payload);
+    }
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ '+r.message);
+    closeLogModal();
+    await refreshAdminData();
+    renderLogsList();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function deleteCurrentLog(){
+  var logId = document.getElementById('lf-id').value;
+  if(!logId) return;
+  deleteLogRow(logId);
+  closeLogModal();
+}
+
+async function deleteLogRow(logId){
+  if(!confirm('Permanently delete this time log? This cannot be undone.')) return;
+  try{
+    var r = await gas('deleteLog', {adminPin:ADMIN_PIN_STORED, logId:logId});
+    if(!r.ok) throw new Error(r.error);
+    showToast('🗑 '+r.message);
+    await refreshAdminData();
+    renderLogsList();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
 function renderEmpList(){ filterEmpList(); }
 
 function filterEmpList(){
