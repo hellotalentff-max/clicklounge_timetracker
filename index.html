@@ -436,7 +436,7 @@ button:disabled{opacity:.5;cursor:default;}
       </div>
       <div class="aform">
         <div class="aform-title">🔐 Change Admin PIN</div>
-        <p style="font-size:11px;color:var(--muted);margin-bottom:12px;">Default PIN is <strong>5678</strong>. Change it after first login.</p>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:12px;">Change it after first login.</p>
         <div class="fg"><label class="fl">Current PIN</label><input class="fi" type="password" inputmode="numeric" pattern="[0-9]{4}" id="set-cur" maxlength="4" placeholder="Current 4-digit PIN"></div>
         <div class="fg"><label class="fl">New PIN (4 digits)</label><input class="fi" type="text" inputmode="numeric" pattern="[0-9]{4}" id="set-new" maxlength="4" placeholder="e.g. 1234"></div>
         <div class="fg"><label class="fl">Confirm New PIN</label><input class="fi" type="text" inputmode="numeric" pattern="[0-9]{4}" id="set-con" maxlength="4" placeholder="Re-enter new PIN"></div>
@@ -843,7 +843,7 @@ async function pinSubmit(){
 }
 
 async function adminLogin(){
-  var pin = prompt('Enter Admin PIN (default: 5678):');
+  var pin = prompt('Enter Admin PIN:');
   if(!pin) return;
   
   pin = String(pin).trim();
