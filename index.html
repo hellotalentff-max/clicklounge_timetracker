@@ -1813,14 +1813,16 @@ function openApplicantDetail(id){
     '</div>'+
 
     sectionTitle('👤 Personal Information')+
-      row('Date of Birth', a.birthday)+
-      row('Gender / Civil / Nationality', personalNotes)+
+      row('Date of Birth', esc(a.birthday))+
+      row('Gender / Civil / Nationality', esc(personalBlock))+
     '</div>'+
 
     sectionTitle('📧 Contact')+
       row('Email', esc(a.email))+
       row('Phone', esc(a.phone))+
       row('Home Address', esc(a.address))+
+      (a.yearsAtAddress?row('Years at Address', esc(a.yearsAtAddress)):'')+
+      (a.distance?row('Distance from Studio', esc(a.distance)):'')+
     '</div>'+
 
     sectionTitle('🚨 Emergency Contact')+
@@ -1830,21 +1832,29 @@ function openApplicantDetail(id){
     '</div>'+
 
     sectionTitle('🎓 Education')+
-      row('Background', eduNotes || '<span style="color:var(--muted);">Not provided</span>')+
+      row('Highest Attained', esc(a.education))+
+      row('Course / Major', esc(a.course))+
+      row('School', esc(a.school))+
     '</div>'+
 
     sectionTitle('💼 Previous Employment')+
-      row('Last job', jobNotes || '<span style="color:var(--muted);">Not provided</span>')+
+      row('Company', esc(a.prevCompany))+
+      row('Position', esc(a.prevPosition))+
+      row('Years Experience', esc(a.yearsExperience))+
+      row('Reason for Leaving', esc(a.reasonForLeaving))+
     '</div>'+
 
     sectionTitle('⭐ Skills & Specialties')+
-      row('Skills', skillsNotes ? skillsNotes.replace('Skills: ','') : '<span style="color:var(--muted);">Not provided</span>')+
+      row('Skills', a.skills ? '<div style="white-space:pre-wrap;">'+esc(a.skills)+'</div>' : '<span style="color:var(--muted);">Not provided</span>')+
     '</div>'+
 
     sectionTitle('💼 Employment Preferences')+
       row('Type', esc(a.type))+
       row('Shift Type', esc(a.shiftType))+
       row('Available Hours', (a.shiftStart||'—') + ' to ' + (a.shiftEnd||'—'))+
+      (a.expectedRate?row('Expected Rate', '₱'+esc(a.expectedRate)+'/hr'):'')+
+      (a.availableFrom?row('Earliest Start Date', esc(a.availableFrom)):'')+
+      (a.referralSource?row('Heard via', esc(a.referralSource)):'')+
     '</div>'+
 
     sectionTitle('🏛 Government IDs')+
@@ -1869,9 +1879,7 @@ function openApplicantDetail(id){
       }).join('') : '<div style="padding:12px;color:var(--muted);font-style:italic;font-size:12px;">No documents uploaded</div>')+
     '</div>'+
 
-    (additionalNotes ? sectionTitle('📋 Additional Info')+row('Details', '<pre style="white-space:pre-wrap;font-family:inherit;margin:0;font-size:13px;color:var(--slate);">'+autolink(additionalNotes)+'</pre>')+'</div>' : '')+
-
-    (freeNotes ? sectionTitle('📝 Notes from Applicant')+row('Notes', '<em style="color:var(--slate);">"'+esc(freeNotes)+'"</em>')+'</div>' : '')+
+    ((a.applicantNotes||freeNotes) ? sectionTitle('📝 Notes from Applicant')+row('Notes', '<em style="color:var(--slate);white-space:pre-wrap;">"'+autolink(a.applicantNotes||freeNotes)+'"</em>')+'</div>' : '')+
 
     '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">'+
       '<button class="btn btn-d btn-sm" onclick="closeApplicantDetail();rejectApplicant(\''+escAttr(a.id)+'\',\''+escAttr(a.name)+'\')">✗ Reject</button>'+
@@ -1933,13 +1941,31 @@ function openCompareModal(){
     {label:'📧 Email', val:function(a){ return esc(a.email||'—'); }},
     {label:'📱 Phone', val:function(a){ return esc(a.phone||'—'); }},
     {label:'🎂 Birthday', val:function(a){ return esc(a.birthday||'—'); }},
-    {label:'👤 Personal', val:function(a){ return esc(extractSection(a.notesHr,'👤')) || '<span style="color:var(--muted);">—</span>'; }},
+    {label:'👤 Personal', val:function(a){
+      var v = [a.gender, a.civilStatus, a.nationality].filter(Boolean).join(' · ') || extractSection(a.notesHr,'👤');
+      return v ? esc(v) : '<span style="color:var(--muted);">—</span>';
+    }},
     {label:'🏠 Address', val:function(a){ return esc(a.address||'—'); }},
     {label:'💼 Type', val:function(a){ return '<span class="badge-info">'+esc(a.type||'—')+'</span>'; }},
     {label:'🕒 Shift', val:function(a){ return esc(a.shiftType||'—')+(a.shiftStart?' ('+a.shiftStart+'-'+a.shiftEnd+')':''); }},
-    {label:'🎓 Education', val:function(a){ var v = extractSection(a.notesHr,'🎓'); return v ? esc(v) : '<span style="color:var(--muted);">—</span>'; }},
-    {label:'💼 Previous Job', val:function(a){ var v = extractSection(a.notesHr,'💼'); return v ? esc(v) : '<span style="color:var(--muted);">—</span>'; }},
-    {label:'⭐ Skills', val:function(a){ var v = extractSection(a.notesHr,'⭐'); return v ? esc(v.replace('Skills: ','')) : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'🎓 Education', val:function(a){
+      var v = [a.education, a.course, a.school].filter(Boolean).join(' · ') || extractSection(a.notesHr,'🎓');
+      return v ? esc(v) : '<span style="color:var(--muted);">—</span>';
+    }},
+    {label:'💼 Previous Job', val:function(a){
+      var v = [a.prevCompany, a.prevPosition, a.yearsExperience].filter(Boolean).join(' · ');
+      if(a.reasonForLeaving) v += ' · Left: ' + a.reasonForLeaving;
+      v = v || extractSection(a.notesHr,'💼');
+      return v ? esc(v) : '<span style="color:var(--muted);">—</span>';
+    }},
+    {label:'⭐ Skills', val:function(a){
+      var v = a.skills || extractSection(a.notesHr,'⭐').replace('Skills: ','');
+      return v ? '<div style="white-space:pre-wrap;font-size:11px;">'+esc(v)+'</div>' : '<span style="color:var(--muted);">—</span>';
+    }},
+    {label:'💰 Expected Rate', val:function(a){ return a.expectedRate ? '₱'+esc(a.expectedRate)+'/hr' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'📅 Available From', val:function(a){ return a.availableFrom ? esc(a.availableFrom) : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'📍 Distance', val:function(a){ return a.distance ? esc(a.distance) : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'📣 Heard via', val:function(a){ return a.referralSource ? esc(a.referralSource) : '<span style="color:var(--muted);">—</span>'; }},
     {label:'🚨 Emergency Contact', val:function(a){ return a.emergencyContact ? esc(a.emergencyContact)+'<br><span style="color:var(--muted);font-size:11px;">('+esc(a.emergencyRelationship||'?')+') '+esc(a.emergencyPhone||'')+'</span>' : '<span style="color:var(--muted);">—</span>'; }},
     {label:'🏛 SSS', val:function(a){ return esc(a.sss) || '<span style="color:var(--muted);">—</span>'; }},
     {label:'🏛 PhilHealth', val:function(a){ return esc(a.philhealth) || '<span style="color:var(--muted);">—</span>'; }},
@@ -1947,11 +1973,14 @@ function openCompareModal(){
     {label:'🏛 TIN', val:function(a){ return esc(a.tin) || '<span style="color:var(--muted);">—</span>'; }},
     {label:'💳 Bank', val:function(a){ return (a.bankName||a.bankAccount) ? esc(a.bankName||'?')+'<br><span style="color:var(--muted);font-size:11px;">'+esc(a.bankAccount||'')+'</span>' : '<span style="color:var(--muted);">—</span>'; }},
     {label:'📋 Additional', val:function(a){ var v = extractSection(a.notesHr,'📋'); return v ? '<div style="font-size:11px;white-space:pre-wrap;">'+autolinkCell(v)+'</div>' : '<span style="color:var(--muted);">—</span>'; }},
-    {label:'📝 Notes', val:function(a){ var v = extractSection(a.notesHr,'📝'); return v ? '<em style="font-size:11px;">"'+autolinkCell(v)+'"</em>' : '<span style="color:var(--muted);">—</span>'; }},
     {label:'📄 Resume', val:function(a){ return a.resumeUrl ? '<a href="'+esc(a.resumeUrl)+'" target="_blank" style="color:var(--teal);">📄 View</a>' : '<span style="color:var(--muted);">—</span>'; }},
     {label:'📷 Photo', val:function(a){ return a.photoUrl ? '<a href="'+esc(a.photoUrl)+'" target="_blank" style="color:var(--teal);">📷 View</a>' : '<span style="color:var(--muted);">—</span>'; }},
-    {label:'🪪 Gov ID', val:function(a){ var u = findUrlInAdditional(a,'Gov ID'); return u ? '<a href="'+esc(u)+'" target="_blank" style="color:var(--teal);">🪪 View</a>' : '<span style="color:var(--muted);">—</span>'; }},
-    {label:'🛡 Clearance', val:function(a){ var u = findUrlInAdditional(a,'Clearance'); return u ? '<a href="'+esc(u)+'" target="_blank" style="color:var(--teal);">🛡 View</a>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'🪪 Gov ID', val:function(a){ var u = a.govIdUrl || findUrlInAdditional(a,'Gov ID'); return u ? '<a href="'+esc(u)+'" target="_blank" style="color:var(--teal);">🪪 View</a>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'🛡 Clearance', val:function(a){ var u = a.clearanceUrl || findUrlInAdditional(a,'Clearance'); return u ? '<a href="'+esc(u)+'" target="_blank" style="color:var(--teal);">🛡 View</a>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'📝 Applicant Notes', val:function(a){
+      var v = a.applicantNotes || extractSection(a.notesHr,'📝');
+      return v ? '<em style="font-size:11px;white-space:pre-wrap;">"'+autolinkCell(v)+'"</em>' : '<span style="color:var(--muted);">—</span>';
+    }},
     {label:'Actions', val:function(a){
       return '<div style="display:flex;flex-direction:column;gap:4px;">'+
         '<button class="btn btn-sm" onclick="closeCompareModal();openApplicantDetail(\''+escAttr(a.id)+'\')">👁 Details</button>'+
