@@ -1792,8 +1792,12 @@ function openApplicantDetail(id){
     var m = additionalNotes.match(new RegExp(label + ':\\s*(https?:\\/\\/\\S+)', 'i'));
     return m ? m[1] : '';
   }
-  var idPhotoUrl = findUrlInNotes('Gov ID');
-  var clearanceUrl = findUrlInNotes('Clearance');
+  // Prefer direct columns, fall back to notes
+  var idPhotoUrl = a.govIdUrl || findUrlInNotes('Gov ID');
+  var clearanceUrl = a.clearanceUrl || findUrlInNotes('Clearance');
+
+  // Build personal block — prefer direct columns, fall back to notes
+  var personalBlock = [a.gender, a.civilStatus, a.nationality].filter(Boolean).join(' · ') || personalNotes;
 
   // Build all-links section
   var links = [];
