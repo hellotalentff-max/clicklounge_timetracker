@@ -706,6 +706,28 @@ button:disabled{opacity:.5;cursor:default;}
 .emp-mtab.on{color:var(--teal);border-bottom-color:var(--teal);}
 </style>
 
+<!-- ── Applicant Detail Modal — full application form view ── -->
+<div class="pm-bg" id="applicant-detail-bg" onclick="if(event.target===this)closeApplicantDetail()">
+  <div class="pm" style="max-width:720px;max-height:92vh;overflow-y:auto;">
+    <div class="pm-h" style="position:sticky;top:0;z-index:2;">
+      <span>📋 Application Details</span>
+      <button onclick="closeApplicantDetail()" style="background:rgba(255,255,255,.12);border:none;color:var(--cream);border-radius:6px;padding:4px 10px;cursor:pointer;">✕</button>
+    </div>
+    <div class="pm-b" id="applicant-detail-body"></div>
+  </div>
+</div>
+
+<!-- ── Compare Applicants Modal — side-by-side table ── -->
+<div class="pm-bg" id="compare-bg" onclick="if(event.target===this)closeCompareModal()">
+  <div class="pm" style="max-width:96vw;width:96vw;max-height:96vh;overflow-y:auto;">
+    <div class="pm-h" style="position:sticky;top:0;z-index:2;">
+      <span>📊 Compare Applicants — Side by Side</span>
+      <button onclick="closeCompareModal()" style="background:rgba(255,255,255,.12);border:none;color:var(--cream);border-radius:6px;padding:4px 10px;cursor:pointer;">✕</button>
+    </div>
+    <div class="pm-b" id="compare-body"></div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -1647,10 +1669,8 @@ function renderApplicants(){
     badge.textContent = applicants.length;
     badge.style.display = applicants.length ? '' : 'none';
   }
-  // Pre-fill signup link with stored value or current host placeholder
   var linkInput = document.getElementById('signup-link');
   if(linkInput) linkInput.value = localStorage.getItem('tc_signup_url') || '';
-  // Allow updating the link
   if(linkInput && !linkInput._bound){
     linkInput._bound = true;
     linkInput.addEventListener('change', function(){
@@ -1663,7 +1683,16 @@ function renderApplicants(){
     return;
   }
 
-  el.innerHTML = applicants.map(function(a){
+  // Compare bar — shown only when 2+ applicants
+  var compareBar = '';
+  if(applicants.length >= 2){
+    compareBar = '<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'+
+      '<div style="font-size:12px;color:var(--slate);"><strong>'+applicants.length+' pending applications</strong> — compare side-by-side to evaluate fit</div>'+
+      '<button class="btn btn-t btn-sm" onclick="openCompareModal()">📊 Compare All Side-by-Side</button>'+
+    '</div>';
+  }
+
+  el.innerHTML = compareBar + applicants.map(function(a){
     var bday = a.birthday ? ' · 🎂 ' + esc(a.birthday) : '';
     var subFields = [];
     if(a.address) subFields.push('🏠 '+esc(a.address));
@@ -1674,13 +1703,14 @@ function renderApplicants(){
     if(a.pagibig) govIds.push('Pag-IBIG: '+esc(a.pagibig));
     if(a.tin) govIds.push('TIN: '+esc(a.tin));
     var bank = (a.bankName||a.bankAccount) ? '💳 '+esc(a.bankName||'?')+' — '+esc(a.bankAccount||'?') : '';
-    return '<div style="background:var(--white);border-radius:14px;padding:18px;margin-bottom:12px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.04);">'+
+    return '<div onclick="openApplicantDetail(\''+escAttr(a.id)+'\')" style="background:var(--white);border-radius:14px;padding:18px;margin-bottom:12px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.04);cursor:pointer;transition:box-shadow .15s;" onmouseover="this.style.boxShadow=\'0 4px 14px rgba(0,0,0,.08)\'" onmouseout="this.style.boxShadow=\'0 1px 3px rgba(0,0,0,.04)\'">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px;flex-wrap:wrap;">'+
         '<div style="flex:1;min-width:200px;">'+
           '<div style="font-size:15px;font-weight:700;color:var(--dark);">'+esc(a.name)+'</div>'+
           '<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+esc(a.role||'No role specified')+' · <span class="badge-info">'+esc(a.type||'full-time')+'</span>'+bday+'</div>'+
         '</div>'+
-        '<div style="display:flex;gap:6px;">'+
+        '<div style="display:flex;gap:6px;" onclick="event.stopPropagation()">'+
+          '<button class="btn btn-sm" onclick="openApplicantDetail(\''+escAttr(a.id)+'\')">👁 View Details</button>'+
           '<button class="btn btn-t btn-sm" onclick="openApproveApplicantModal(\''+escAttr(a.id)+'\')">✅ Approve</button>'+
           '<button class="btn btn-d btn-sm" onclick="rejectApplicant(\''+escAttr(a.id)+'\',\''+escAttr(a.name)+'\')">✗ Reject</button>'+
         '</div>'+
@@ -1693,14 +1723,225 @@ function renderApplicants(){
       (govIds.length||bank ? '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--light2);font-size:10px;color:var(--muted);line-height:1.8;">'+
         (govIds.length?govIds.join(' · ')+'<br>':'')+(bank?bank:'')+
       '</div>' : '')+
-      ((a.resumeUrl||a.photoUrl) ? '<div style="margin-top:10px;display:flex;gap:8px;font-size:11px;">'+
+      ((a.resumeUrl||a.photoUrl) ? '<div style="margin-top:10px;display:flex;gap:8px;font-size:11px;" onclick="event.stopPropagation()">'+
         (a.resumeUrl?'<a href="'+esc(a.resumeUrl)+'" target="_blank" style="color:var(--teal);text-decoration:none;">📄 View Resume</a>':'')+
         (a.photoUrl?'<a href="'+esc(a.photoUrl)+'" target="_blank" style="color:var(--teal);text-decoration:none;">📷 View Photo</a>':'')+
       '</div>' : '')+
-      (a.notesHr ? '<div style="margin-top:10px;padding:10px;background:var(--light);border-radius:8px;font-size:11px;color:var(--slate);font-style:italic;">"'+esc(a.notesHr)+'"</div>' : '')+
-      '<div style="margin-top:10px;font-size:10px;color:var(--muted);">Submitted: '+esc(a.hired||'—')+'</div>'+
+      '<div style="margin-top:10px;font-size:10px;color:var(--muted);text-align:right;font-style:italic;">Click anywhere to see all details · Submitted: '+esc(a.hired||'—')+'</div>'+
     '</div>';
   }).join('');
+}
+
+// ── Applicant Detail Modal (single applicant, full view) ──
+function openApplicantDetail(id){
+  var a = (ADMIN_DATA.staff||[]).find(function(s){ return s.id === id && s.status === 'pending'; });
+  if(!a){ showToast('Applicant not found'); return; }
+
+  // Parse the consolidated notes for structured sections
+  var notes = a.notesHr || '';
+  function extractSection(emoji){
+    var lines = notes.split('\n');
+    var matched = [];
+    for(var i=0; i<lines.length; i++){
+      if(lines[i].indexOf(emoji) === 0){
+        matched.push(lines[i].slice(emoji.length).trim());
+        // Include any following indented or unprefixed lines until next emoji-prefixed line
+        for(var j=i+1; j<lines.length; j++){
+          if(/^[👤🎓💼⭐📋📝🚨]/.test(lines[j])) break;
+          if(lines[j].trim()) matched.push(lines[j].trim());
+        }
+      }
+    }
+    return matched.join('\n');
+  }
+
+  function row(label, val, opts){
+    opts = opts || {};
+    if(!val && !opts.showEmpty) return '';
+    var v = val || '<span style="color:var(--muted);font-style:italic;">—</span>';
+    return '<div style="display:grid;grid-template-columns:160px 1fr;gap:12px;padding:8px 0;border-bottom:1px dashed var(--border);">'+
+      '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">'+label+'</div>'+
+      '<div style="font-size:13px;color:var(--slate);">'+v+'</div>'+
+    '</div>';
+  }
+
+  function sectionTitle(title){
+    return '<div style="background:var(--teal);color:var(--cream);padding:8px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;border-radius:8px 8px 0 0;margin-top:16px;">'+title+'</div>'+
+      '<div style="background:var(--white);border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;padding:8px 16px;">';
+  }
+
+  var personalNotes = extractSection('👤');
+  var eduNotes = extractSection('🎓');
+  var jobNotes = extractSection('💼');
+  var skillsNotes = extractSection('⭐');
+  var additionalNotes = extractSection('📋');
+  var freeNotes = extractSection('📝');
+
+  var html =
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:14px;">'+
+      '<div style="flex:1;">'+
+        '<div style="font-size:20px;font-weight:800;color:var(--dark);">'+esc(a.name)+'</div>'+
+        '<div style="font-size:12px;color:var(--muted);margin-top:3px;">Applying for: <strong>'+esc(a.role||'(unspecified)')+'</strong> · <span class="badge-info">'+esc(a.type||'full-time')+'</span></div>'+
+        '<div style="font-size:11px;color:var(--muted);margin-top:6px;">Submitted: '+esc(a.hired||'—')+' · ID: '+esc(a.id)+'</div>'+
+      '</div>'+
+      (a.photoUrl ? '<a href="'+esc(a.photoUrl)+'" target="_blank"><img src="'+esc(a.photoUrl)+'" style="width:80px;height:80px;border-radius:10px;object-fit:cover;border:2px solid var(--border);" onerror="this.style.display=\'none\'"></a>' : '')+
+    '</div>'+
+
+    sectionTitle('👤 Personal Information')+
+      row('Date of Birth', a.birthday)+
+      row('Gender / Civil / Nationality', personalNotes)+
+    '</div>'+
+
+    sectionTitle('📧 Contact')+
+      row('Email', esc(a.email))+
+      row('Phone', esc(a.phone))+
+      row('Home Address', esc(a.address))+
+    '</div>'+
+
+    sectionTitle('🚨 Emergency Contact')+
+      row('Name', esc(a.emergencyContact))+
+      row('Phone', esc(a.emergencyPhone))+
+      row('Relationship', esc(a.emergencyRelationship))+
+    '</div>'+
+
+    sectionTitle('🎓 Education')+
+      row('Background', eduNotes || '<span style="color:var(--muted);">Not provided</span>')+
+    '</div>'+
+
+    sectionTitle('💼 Previous Employment')+
+      row('Last job', jobNotes || '<span style="color:var(--muted);">Not provided</span>')+
+    '</div>'+
+
+    sectionTitle('⭐ Skills & Specialties')+
+      row('Skills', skillsNotes ? skillsNotes.replace('Skills: ','') : '<span style="color:var(--muted);">Not provided</span>')+
+    '</div>'+
+
+    sectionTitle('💼 Employment Preferences')+
+      row('Type', esc(a.type))+
+      row('Shift Type', esc(a.shiftType))+
+      row('Available Hours', (a.shiftStart||'—') + ' to ' + (a.shiftEnd||'—'))+
+    '</div>'+
+
+    sectionTitle('🏛 Government IDs')+
+      row('SSS', esc(a.sss))+
+      row('PhilHealth', esc(a.philhealth))+
+      row('Pag-IBIG', esc(a.pagibig))+
+      row('TIN', esc(a.tin))+
+    '</div>'+
+
+    sectionTitle('💳 Bank / Payroll')+
+      row('Bank/Wallet', esc(a.bankName))+
+      row('Account #', esc(a.bankAccount))+
+    '</div>'+
+
+    sectionTitle('📎 Documents')+
+      row('Resume', a.resumeUrl ? '<a href="'+esc(a.resumeUrl)+'" target="_blank" style="color:var(--teal);">📄 View Resume</a>' : '')+
+      row('Photo', a.photoUrl ? '<a href="'+esc(a.photoUrl)+'" target="_blank" style="color:var(--teal);">📷 View Photo</a>' : '')+
+    '</div>'+
+
+    (additionalNotes ? sectionTitle('📋 Additional Info')+row('Details', '<pre style="white-space:pre-wrap;font-family:inherit;margin:0;font-size:13px;color:var(--slate);">'+esc(additionalNotes)+'</pre>')+'</div>' : '')+
+
+    (freeNotes ? sectionTitle('📝 Notes from Applicant')+row('Notes', '<em style="color:var(--slate);">"'+esc(freeNotes)+'"</em>')+'</div>' : '')+
+
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">'+
+      '<button class="btn btn-d btn-sm" onclick="closeApplicantDetail();rejectApplicant(\''+escAttr(a.id)+'\',\''+escAttr(a.name)+'\')">✗ Reject</button>'+
+      '<button class="btn" onclick="closeApplicantDetail()">Close</button>'+
+      '<button class="btn btn-t" onclick="closeApplicantDetail();openApproveApplicantModal(\''+escAttr(a.id)+'\')">✅ Approve Application</button>'+
+    '</div>';
+
+  // Render in our custom modal
+  document.getElementById('applicant-detail-body').innerHTML = html;
+  document.getElementById('applicant-detail-bg').classList.add('open');
+}
+
+function closeApplicantDetail(){
+  document.getElementById('applicant-detail-bg').classList.remove('open');
+}
+
+// ── COMPARE MODAL — side-by-side table, one column per applicant ──
+function openCompareModal(){
+  var applicants = (ADMIN_DATA.staff||[]).filter(function(s){ return s.status==='pending'; });
+  if(applicants.length < 2){ showToast('Need at least 2 applicants to compare'); return; }
+
+  // Helper to parse consolidated notes for sections
+  function extractSection(notes, emoji){
+    var lines = (notes||'').split('\n');
+    var matched = [];
+    for(var i=0; i<lines.length; i++){
+      if(lines[i].indexOf(emoji) === 0){
+        matched.push(lines[i].slice(emoji.length).trim());
+        for(var j=i+1; j<lines.length; j++){
+          if(/^[👤🎓💼⭐📋📝🚨]/.test(lines[j])) break;
+          if(lines[j].trim()) matched.push(lines[j].trim());
+        }
+      }
+    }
+    return matched.join('\n');
+  }
+
+  // Define rows — label + value-extractor function
+  var rows = [
+    {label:'📷 Photo', val:function(a){ return a.photoUrl ? '<a href="'+esc(a.photoUrl)+'" target="_blank"><img src="'+esc(a.photoUrl)+'" style="width:60px;height:60px;border-radius:6px;object-fit:cover;" onerror="this.replaceWith(document.createTextNode(\'(broken)\'))"></a>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'🎯 Position', val:function(a){ return esc(a.role||'—'); }},
+    {label:'📅 Submitted', val:function(a){ return esc(a.hired||'—'); }},
+    {label:'📧 Email', val:function(a){ return esc(a.email||'—'); }},
+    {label:'📱 Phone', val:function(a){ return esc(a.phone||'—'); }},
+    {label:'🎂 Birthday', val:function(a){ return esc(a.birthday||'—'); }},
+    {label:'👤 Personal', val:function(a){ return esc(extractSection(a.notesHr,'👤')) || '<span style="color:var(--muted);">—</span>'; }},
+    {label:'🏠 Address', val:function(a){ return esc(a.address||'—'); }},
+    {label:'💼 Type', val:function(a){ return '<span class="badge-info">'+esc(a.type||'—')+'</span>'; }},
+    {label:'🕒 Shift', val:function(a){ return esc(a.shiftType||'—')+(a.shiftStart?' ('+a.shiftStart+'-'+a.shiftEnd+')':''); }},
+    {label:'🎓 Education', val:function(a){ var v = extractSection(a.notesHr,'🎓'); return v ? esc(v) : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'💼 Previous Job', val:function(a){ var v = extractSection(a.notesHr,'💼'); return v ? esc(v) : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'⭐ Skills', val:function(a){ var v = extractSection(a.notesHr,'⭐'); return v ? esc(v.replace('Skills: ','')) : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'🚨 Emergency Contact', val:function(a){ return a.emergencyContact ? esc(a.emergencyContact)+'<br><span style="color:var(--muted);font-size:11px;">('+esc(a.emergencyRelationship||'?')+') '+esc(a.emergencyPhone||'')+'</span>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'🏛 SSS', val:function(a){ return esc(a.sss) || '<span style="color:var(--muted);">—</span>'; }},
+    {label:'🏛 PhilHealth', val:function(a){ return esc(a.philhealth) || '<span style="color:var(--muted);">—</span>'; }},
+    {label:'🏛 Pag-IBIG', val:function(a){ return esc(a.pagibig) || '<span style="color:var(--muted);">—</span>'; }},
+    {label:'🏛 TIN', val:function(a){ return esc(a.tin) || '<span style="color:var(--muted);">—</span>'; }},
+    {label:'💳 Bank', val:function(a){ return (a.bankName||a.bankAccount) ? esc(a.bankName||'?')+'<br><span style="color:var(--muted);font-size:11px;">'+esc(a.bankAccount||'')+'</span>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'📋 Additional', val:function(a){ var v = extractSection(a.notesHr,'📋'); return v ? '<div style="font-size:11px;white-space:pre-wrap;">'+esc(v)+'</div>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'📝 Notes', val:function(a){ var v = extractSection(a.notesHr,'📝'); return v ? '<em style="font-size:11px;">"'+esc(v)+'"</em>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'📄 Resume', val:function(a){ return a.resumeUrl ? '<a href="'+esc(a.resumeUrl)+'" target="_blank" style="color:var(--teal);">📄 View</a>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'Actions', val:function(a){
+      return '<div style="display:flex;flex-direction:column;gap:4px;">'+
+        '<button class="btn btn-sm" onclick="closeCompareModal();openApplicantDetail(\''+escAttr(a.id)+'\')">👁 Details</button>'+
+        '<button class="btn btn-t btn-sm" onclick="closeCompareModal();openApproveApplicantModal(\''+escAttr(a.id)+'\')">✅ Approve</button>'+
+        '<button class="btn btn-d btn-sm" onclick="closeCompareModal();rejectApplicant(\''+escAttr(a.id)+'\',\''+escAttr(a.name)+'\')">✗ Reject</button>'+
+      '</div>';
+    }}
+  ];
+
+  // Build table
+  var tbl = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+  // Header row — applicant names
+  tbl += '<thead><tr><th style="background:var(--dark);color:var(--cream);padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;position:sticky;left:0;z-index:2;min-width:140px;">Field</th>';
+  applicants.forEach(function(a){
+    tbl += '<th style="background:var(--teal);color:var(--cream);padding:10px 12px;text-align:left;font-size:12px;font-weight:700;min-width:200px;">'+esc(a.name)+'</th>';
+  });
+  tbl += '</tr></thead><tbody>';
+  rows.forEach(function(r, idx){
+    tbl += '<tr style="background:'+(idx%2?'var(--light)':'var(--white)')+';">';
+    tbl += '<td style="padding:10px 12px;font-weight:600;color:var(--muted);border:1px solid var(--border);position:sticky;left:0;background:inherit;font-size:11px;">'+r.label+'</td>';
+    applicants.forEach(function(a){
+      tbl += '<td style="padding:10px 12px;color:var(--slate);border:1px solid var(--border);vertical-align:top;">'+r.val(a)+'</td>';
+    });
+    tbl += '</tr>';
+  });
+  tbl += '</tbody></table>';
+
+  document.getElementById('compare-body').innerHTML =
+    '<div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Compare <strong>'+applicants.length+' applicants</strong> side-by-side. Scroll horizontally if needed. Click any header to focus on that applicant.</div>'+
+    '<div style="overflow:auto;max-height:75vh;border-radius:8px;border:1px solid var(--border);">'+tbl+'</div>'+
+    '<div style="display:flex;justify-content:flex-end;margin-top:14px;">'+
+      '<button class="btn" onclick="closeCompareModal()">Close</button>'+
+    '</div>';
+
+  document.getElementById('compare-bg').classList.add('open');
+}
+
+function closeCompareModal(){
+  document.getElementById('compare-bg').classList.remove('open');
 }
 
 function copySignupLink(){
