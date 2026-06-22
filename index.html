@@ -147,6 +147,8 @@ button:disabled{opacity:.5;cursor:default;}
 
 /* Tier badges */
 .tier-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;display:inline-block;}
+.prof-tab{padding:8px 14px;font-size:11px;font-weight:600;color:var(--muted);border:none;background:none;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent;margin-bottom:-2px;}
+.prof-tab.on{color:var(--teal);border-bottom-color:var(--teal);}
 .tier-trainee{background:rgba(107,140,140,.12);color:#6b8c8c;}
 .tier-junior{background:rgba(74,127,181,.12);color:#4a7fb5;}
 .tier-mid,.tier-mid-level{background:rgba(81,137,125,.12);color:#51897d;}
@@ -245,6 +247,7 @@ button:disabled{opacity:.5;cursor:default;}
     <div class="staff-tabs">
       <button class="stab on" onclick="sTab('records')" id="stab-records">📋 My Records</button>
       <button class="stab" onclick="sTab('leave')" id="stab-leave">📅 Leave</button>
+      <button class="stab" onclick="sTab('profile')" id="stab-profile">👤 My Profile</button>
     </div>
 
     <!-- My Records Tab -->
@@ -267,6 +270,11 @@ button:disabled{opacity:.5;cursor:default;}
       </div>
       <div style="margin-top:14px;" id="s-leave-history"></div>
     </div>
+
+    <!-- Profile Tab -->
+    <div id="stab-panel-profile" style="display:none;">
+      <div id="s-profile-content"></div>
+    </div>
   </div>
 </div>
 
@@ -286,6 +294,7 @@ button:disabled{opacity:.5;cursor:default;}
     <button class="atab" onclick="aTab('leave')" id="atab-leave">📅 Leave <span class="badge-n" id="lv-badge" style="display:none">0</span></button>
     <button class="atab" onclick="aTab('reports')" id="atab-reports">📄 Reports</button>
     <button class="atab" onclick="aTab('emp')" id="atab-emp">👥 Employees</button>
+    <button class="atab" onclick="aTab('applicants')" id="atab-applicants">📝 Applicants <span class="badge-n" id="app-badge" style="display:none">0</span></button>
     <button class="atab" onclick="aTab('hol')" id="atab-hol">🏖 Holidays</button>
     <button class="atab" onclick="aTab('set')" id="atab-set">⚙ Settings</button>
   </div>
@@ -364,6 +373,19 @@ button:disabled{opacity:.5;cursor:default;}
         <button class="btn" onclick="runMigrateStaff()" title="Add missing HR columns to existing Staff sheet">🔧 Migrate HR Fields</button>
       </div>
       <div id="emp-list"></div>
+    </div>
+
+    <!-- APPLICANTS -->
+    <div id="apanel-applicants" style="display:none;">
+      <div style="background:rgba(215,144,104,.08);border:1.5px solid rgba(215,144,104,.2);border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:12px;font-weight:700;margin-bottom:4px;">📋 Public Application Form</div>
+          <div style="font-size:11px;color:var(--muted);">Share this link with prospective hires. They fill it out, you review and approve here.</div>
+        </div>
+        <button class="btn btn-t" onclick="copySignupLink()">🔗 Copy Form Link</button>
+        <input type="text" id="signup-link" readonly style="width:100%;padding:8px 12px;background:var(--white);border:1.5px solid var(--border);border-radius:8px;font-size:11px;font-family:monospace;margin-top:6px;" placeholder="Set your signup form URL below…">
+      </div>
+      <div id="applicants-list"></div>
     </div>
 
     <!-- HOLIDAYS -->
@@ -980,10 +1002,158 @@ function renderLeaveHistory(){
 }
 
 function sTab(id){
-  ['records','leave'].forEach(function(t){
-    document.getElementById('stab-'+t).classList.toggle('on',t===id);
-    document.getElementById('stab-panel-'+t).style.display=t===id?'':'none';
+  ['records','leave','profile'].forEach(function(t){
+    var btn = document.getElementById('stab-'+t);
+    var pnl = document.getElementById('stab-panel-'+t);
+    if(btn) btn.classList.toggle('on',t===id);
+    if(pnl) pnl.style.display=t===id?'':'none';
   });
+  if(id === 'profile') renderMyProfile();
+}
+
+function renderMyProfile(){
+  var el = document.getElementById('s-profile-content');
+  if(!el) return;
+  var e = (MY_DATA && MY_DATA.employee) || {};
+  var history = (MY_DATA && MY_DATA.history) || [];
+
+  // Helper to render a read-only field
+  function ro(label, value, opts){
+    opts = opts || {};
+    var v = value || '—';
+    var disabled = opts.disabled ? 'disabled' : '';
+    var color = opts.disabled ? 'color:var(--muted);background:#f0f3f3;cursor:not-allowed;' : 'color:var(--slate);background:var(--white);';
+    var hint = opts.hint ? '<div style="font-size:10px;color:var(--muted);margin-top:3px;font-style:italic;">'+opts.hint+'</div>' : '';
+    return '<div class="fg" style="'+(opts.full?'grid-column:1/-1;':'')+'">'+
+      '<label class="fl" style="display:flex;justify-content:space-between;align-items:center;">'+
+        '<span>'+label+'</span>'+
+        (opts.disabled ? '<span style="font-size:9px;color:var(--muted);font-weight:400;text-transform:uppercase;letter-spacing:.5px;">🔒 Set by HR</span>' : '')+
+      '</label>'+
+      '<div style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;'+color+'">'+esc(v)+'</div>'+
+      hint+
+    '</div>';
+  }
+
+  // Tier badge (colored)
+  function tierBadge(tier){
+    if(!tier) return '<span style="color:var(--muted);font-style:italic;">—</span>';
+    var cls = 'tier-' + tier.toLowerCase().replace(/\s+/g,'-').replace(/-level$/,'');
+    return '<span class="tier-badge '+cls+'">'+esc(tier)+'</span>';
+  }
+
+  // Status / contract / tier with disabled style
+  var rateDisplay = e.rate ? '₱' + parseFloat(e.rate).toLocaleString() + ' / hour' : '—';
+  var positionDisplay = e.role || '—';
+  var tierDisplay = e.tier ? '<span class="tier-badge tier-'+e.tier.toLowerCase().replace(/\s+/g,'-').replace(/-level$/,'')+'">'+esc(e.tier)+'</span>' : '—';
+
+  // Career history (read-only)
+  var historyHtml = '';
+  if(history.length){
+    var icons = {hire:'🎉',promotion:'📈',demotion:'📉','role-change':'↔️','rate-change':'💰','tier-change':'🎯',warning:'⚠️',commendation:'🏆',suspension:'⏸',termination:'🛑',resignation:'📤','contract-renewal':'🔄',regularization:'✅'};
+    historyHtml = history.map(function(h){
+      var icon = icons[h.eventType] || '📌';
+      var changes = [];
+      if(h.fromRole !== h.toRole && h.toRole) changes.push('Role: <strong>'+esc(h.fromRole||'—')+' → '+esc(h.toRole)+'</strong>');
+      if(h.fromTier !== h.toTier && h.toTier) changes.push('Tier: <strong>'+esc(h.fromTier||'—')+' → '+esc(h.toTier)+'</strong>');
+      if(parseFloat(h.fromRate||0) !== parseFloat(h.toRate||0) && h.toRate) changes.push('Rate: <strong>₱'+parseFloat(h.fromRate||0).toLocaleString()+' → ₱'+parseFloat(h.toRate).toLocaleString()+'</strong>');
+      return '<div style="background:var(--white);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-bottom:8px;">'+
+        '<div style="font-size:12px;font-weight:700;text-transform:capitalize;">'+icon+' '+esc(h.eventType.replace(/-/g,' '))+'</div>'+
+        (changes.length ? '<div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.6;">'+changes.join('<br>')+'</div>' : '')+
+        (h.reason ? '<div style="font-size:11px;color:var(--slate);margin-top:4px;font-style:italic;">"'+esc(h.reason)+'"</div>' : '')+
+        '<div style="font-size:10px;color:var(--muted);margin-top:6px;">Effective: '+esc(h.effectiveDate||h.date)+(h.approvedBy?' · Approved by '+esc(h.approvedBy):'')+'</div>'+
+      '</div>';
+    }).join('');
+  } else {
+    historyHtml = '<p style="font-size:11px;color:var(--muted);padding:14px;text-align:center;background:var(--light);border-radius:8px;">No career events on record yet.</p>';
+  }
+
+  // Eval display
+  var evalScore = e.evaluationScore ? '⭐ ' + e.evaluationScore + ' / 5' : '—';
+  var evalDate = e.lastEvaluationDate || '—';
+
+  el.innerHTML =
+    // ── Header card ──
+    '<div style="background:linear-gradient(135deg,var(--dark),var(--slate));color:var(--cream);border-radius:14px;padding:20px;margin-bottom:14px;">'+
+      '<div style="display:flex;align-items:center;gap:14px;">'+
+        (e.photoUrl
+          ? '<img src="'+esc(e.photoUrl)+'" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--gold);">'
+          : '<div style="width:56px;height:56px;border-radius:50%;background:var(--gold);color:var(--cream);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;">'+(e.name||'?').slice(0,1).toUpperCase()+'</div>')+
+        '<div style="flex:1;">'+
+          '<div style="font-size:18px;font-weight:700;">'+esc(e.name||'')+'</div>'+
+          '<div style="font-size:12px;color:rgba(245,240,232,.7);margin-top:2px;">'+esc(e.role||'—')+' · '+esc(e.type||'')+(e.tier?' · '+esc(e.tier):'')+'</div>'+
+          (e.hired?'<div style="font-size:10px;color:rgba(245,240,232,.5);margin-top:4px;">Hired: '+esc(e.hired)+'</div>':'')+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+
+    // ── Tabs inside profile ──
+    '<div style="display:flex;gap:4px;margin-bottom:14px;border-bottom:2px solid var(--border);overflow-x:auto;">'+
+      '<button class="prof-tab on" data-tab="basic"  onclick="pTab(\'basic\')">👤 Basic Info</button>'+
+      '<button class="prof-tab"    data-tab="resume" onclick="pTab(\'resume\')">📜 Resume</button>'+
+      '<button class="prof-tab"    data-tab="eval"   onclick="pTab(\'eval\')">⭐ Evaluation</button>'+
+      '<button class="prof-tab"    data-tab="career" onclick="pTab(\'career\')">📈 Career</button>'+
+    '</div>'+
+
+    // ── Basic Info Panel ──
+    '<div class="prof-panel" data-tab="basic">'+
+      '<div class="aform-grid">'+
+        ro('Full Name', e.name)+
+        ro('Position / Role', positionDisplay, {disabled:true, hint:'Updated by HR. To request a role change, talk to your manager.'})+
+        ro('Tier / Level', tierDisplay, {disabled:true, hint:'Updated by HR.'})+
+        ro('Hourly Rate', rateDisplay, {disabled:true, hint:'Set and adjusted by HR.'})+
+        ro('Employment Type', e.type)+
+        ro('Status', e.status)+
+        ro('Email', e.email)+
+        ro('Phone', e.phone)+
+        ro('Birthday', e.birthday)+
+        ro('Date Hired', e.hired)+
+        ro('Address', e.address, {full:true})+
+        ro('Emergency Contact', e.emergencyContact)+
+        ro('Emergency Phone', e.emergencyPhone)+
+        ro('Relationship', e.emergencyRelationship)+
+      '</div>'+
+      '<div style="margin-top:14px;padding:10px 14px;background:rgba(215,144,104,.08);border-left:3px solid var(--gold);border-radius:8px;font-size:11px;color:var(--slate);line-height:1.6;">'+
+        '💡 To update your contact details, address, or emergency contact, please talk to your manager.'+
+      '</div>'+
+    '</div>'+
+
+    // ── Resume Panel ──
+    '<div class="prof-panel" data-tab="resume" style="display:none;">'+
+      '<div class="aform-grid">'+
+        ro('Resume / CV', e.resumeUrl ?
+          '<a href="'+esc(e.resumeUrl)+'" target="_blank" style="color:var(--teal);text-decoration:underline;">📄 View Resume</a>' :
+          'Not uploaded', {full:true, hint:'Uploaded by you during application or by HR.'})+
+        ro('Profile Photo', e.photoUrl ?
+          '<a href="'+esc(e.photoUrl)+'" target="_blank" style="color:var(--teal);text-decoration:underline;">📷 View Photo</a>' :
+          'Not uploaded', {full:true})+
+        ro('Contract Type', e.contractType||'—', {disabled:true})+
+        ro('Contract Start', e.contractStart)+
+        ro('Contract End', e.contractEnd)+
+      '</div>'+
+    '</div>'+
+
+    // ── Evaluation Panel ──
+    '<div class="prof-panel" data-tab="eval" style="display:none;">'+
+      '<div class="aform-grid">'+
+        ro('Current Evaluation Score', evalScore, {disabled:true})+
+        ro('Last Evaluated', evalDate, {disabled:true})+
+        ro('HR Notes', e.notesHr || '— No HR notes yet —', {full:true, disabled:true})+
+      '</div>'+
+      '<div style="margin-top:14px;padding:10px 14px;background:rgba(81,137,125,.06);border-left:3px solid var(--teal);border-radius:8px;font-size:11px;color:var(--slate);line-height:1.6;">'+
+        '📝 Your evaluation score is updated after each performance review with your manager. Talk to HR if you have questions about your evaluation.'+
+      '</div>'+
+    '</div>'+
+
+    // ── Career Panel ──
+    '<div class="prof-panel" data-tab="career" style="display:none;">'+
+      '<div style="font-size:12px;font-weight:700;margin-bottom:10px;">📜 My Career History</div>'+
+      historyHtml+
+    '</div>';
+}
+
+function pTab(id){
+  document.querySelectorAll('.prof-tab').forEach(function(b){ b.classList.toggle('on', b.dataset.tab===id); });
+  document.querySelectorAll('.prof-panel').forEach(function(p){ p.style.display = p.dataset.tab===id ? '' : 'none'; });
 }
 
 async function mainAction(){
@@ -1045,13 +1215,14 @@ function showAdminView(){
 }
 
 function aTab(id){
-  ['dash','logs','ot','leave','reports','emp','hol','set'].forEach(function(t){
+  ['dash','logs','ot','leave','reports','emp','applicants','hol','set'].forEach(function(t){
     var btn = document.getElementById('atab-'+t);
     var pnl = document.getElementById('apanel-'+t);
     if(btn) btn.classList.toggle('on',t===id);
     if(pnl) pnl.style.display=t===id?'':'none';
   });
   if(id === 'logs') renderLogsList();
+  if(id === 'applicants') renderApplicants();
 }
 
 function renderAdminDash(){
@@ -1064,10 +1235,13 @@ function renderAdminDash(){
   var pendLv  = (d.pendingLeave||[]).length;
 
   // Badge counts
+  var pendApp = (d.staff||[]).filter(function(s){ return s.status==='pending'; }).length;
   var otB = document.getElementById('ot-badge');
   var lvB = document.getElementById('lv-badge');
+  var apB = document.getElementById('app-badge');
   if(otB){ otB.style.display = pendOT?'':'none'; otB.textContent=pendOT; }
   if(lvB){ lvB.style.display = pendLv?'':'none'; lvB.textContent=pendLv; }
+  if(apB){ apB.style.display = pendApp?'':'none'; apB.textContent=pendApp; }
 
   document.getElementById('a-kpis').innerHTML=[
     {l:'Total Staff',    v:staff.length,       c:'var(--teal)'},
@@ -1461,10 +1635,130 @@ async function deleteLogRow(logId){
   }catch(e){ showToast('❌ '+e.message); }
 }
 
+// ════════════════════════════════════════
+//  APPLICANTS — Public signup review queue
+// ════════════════════════════════════════
+function renderApplicants(){
+  var el = document.getElementById('applicants-list');
+  if(!el) return;
+  var applicants = (ADMIN_DATA.staff||[]).filter(function(s){ return s.status==='pending'; });
+  var badge = document.getElementById('app-badge');
+  if(badge){
+    badge.textContent = applicants.length;
+    badge.style.display = applicants.length ? '' : 'none';
+  }
+  // Pre-fill signup link with stored value or current host placeholder
+  var linkInput = document.getElementById('signup-link');
+  if(linkInput) linkInput.value = localStorage.getItem('tc_signup_url') || '';
+  // Allow updating the link
+  if(linkInput && !linkInput._bound){
+    linkInput._bound = true;
+    linkInput.addEventListener('change', function(){
+      localStorage.setItem('tc_signup_url', linkInput.value.trim());
+    });
+  }
+
+  if(!applicants.length){
+    el.innerHTML = '<div style="background:var(--white);border-radius:12px;padding:32px;text-align:center;color:var(--muted);font-size:13px;border:1px solid var(--border);">📭 No pending applications.</div>';
+    return;
+  }
+
+  el.innerHTML = applicants.map(function(a){
+    var bday = a.birthday ? ' · 🎂 ' + esc(a.birthday) : '';
+    var subFields = [];
+    if(a.address) subFields.push('🏠 '+esc(a.address));
+    if(a.emergencyContact) subFields.push('🚨 '+esc(a.emergencyContact)+' ('+esc(a.emergencyRelationship||'?')+') — '+esc(a.emergencyPhone||''));
+    var govIds = [];
+    if(a.sss) govIds.push('SSS: '+esc(a.sss));
+    if(a.philhealth) govIds.push('PhilHealth: '+esc(a.philhealth));
+    if(a.pagibig) govIds.push('Pag-IBIG: '+esc(a.pagibig));
+    if(a.tin) govIds.push('TIN: '+esc(a.tin));
+    var bank = (a.bankName||a.bankAccount) ? '💳 '+esc(a.bankName||'?')+' — '+esc(a.bankAccount||'?') : '';
+    return '<div style="background:var(--white);border-radius:14px;padding:18px;margin-bottom:12px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.04);">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px;flex-wrap:wrap;">'+
+        '<div style="flex:1;min-width:200px;">'+
+          '<div style="font-size:15px;font-weight:700;color:var(--dark);">'+esc(a.name)+'</div>'+
+          '<div style="font-size:11px;color:var(--muted);margin-top:2px;">'+esc(a.role||'No role specified')+' · <span class="badge-info">'+esc(a.type||'full-time')+'</span>'+bday+'</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:6px;">'+
+          '<button class="btn btn-t btn-sm" onclick="openApproveApplicantModal(\''+escAttr(a.id)+'\')">✅ Approve</button>'+
+          '<button class="btn btn-d btn-sm" onclick="rejectApplicant(\''+escAttr(a.id)+'\',\''+escAttr(a.name)+'\')">✗ Reject</button>'+
+        '</div>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;font-size:11px;">'+
+        '<div style="color:var(--slate);">📧 '+esc(a.email||'No email')+'</div>'+
+        '<div style="color:var(--slate);">📱 '+esc(a.phone||'No phone')+'</div>'+
+      '</div>'+
+      (subFields.length ? '<div style="margin-top:10px;font-size:11px;color:var(--muted);line-height:1.8;">'+subFields.join('<br>')+'</div>' : '')+
+      (govIds.length||bank ? '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--light2);font-size:10px;color:var(--muted);line-height:1.8;">'+
+        (govIds.length?govIds.join(' · ')+'<br>':'')+(bank?bank:'')+
+      '</div>' : '')+
+      ((a.resumeUrl||a.photoUrl) ? '<div style="margin-top:10px;display:flex;gap:8px;font-size:11px;">'+
+        (a.resumeUrl?'<a href="'+esc(a.resumeUrl)+'" target="_blank" style="color:var(--teal);text-decoration:none;">📄 View Resume</a>':'')+
+        (a.photoUrl?'<a href="'+esc(a.photoUrl)+'" target="_blank" style="color:var(--teal);text-decoration:none;">📷 View Photo</a>':'')+
+      '</div>' : '')+
+      (a.notesHr ? '<div style="margin-top:10px;padding:10px;background:var(--light);border-radius:8px;font-size:11px;color:var(--slate);font-style:italic;">"'+esc(a.notesHr)+'"</div>' : '')+
+      '<div style="margin-top:10px;font-size:10px;color:var(--muted);">Submitted: '+esc(a.hired||'—')+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+function copySignupLink(){
+  var link = document.getElementById('signup-link').value.trim();
+  if(!link){
+    var newLink = prompt('Paste the URL where you hosted the signup form (e.g. https://yourname.github.io/timecommand-signup/):');
+    if(!newLink) return;
+    document.getElementById('signup-link').value = newLink;
+    localStorage.setItem('tc_signup_url', newLink);
+    link = newLink;
+  }
+  navigator.clipboard.writeText(link).then(function(){ showToast('🔗 Link copied!'); }, function(){
+    prompt('Copy this link:', link);
+  });
+}
+
+function openApproveApplicantModal(applicantId){
+  var a = (ADMIN_DATA.staff||[]).find(function(s){ return s.id===applicantId && s.status==='pending'; });
+  if(!a){ showToast('Applicant not found'); return; }
+  var pin = prompt('Approve "'+a.name+'"\n\nAssign a 4-digit PIN for clocking in:', '');
+  if(pin === null) return;
+  if(!/^\d{4}$/.test(pin)){ showToast('PIN must be exactly 4 digits.'); return; }
+  var rate = prompt('Hourly rate (₱) for '+a.name+':', '');
+  if(rate === null) return;
+  if(!rate || isNaN(parseFloat(rate)) || parseFloat(rate) <= 0){ showToast('Enter a valid hourly rate.'); return; }
+  var tier = prompt('Tier / Level (optional — Trainee/Junior/Mid/Senior/Lead/Manager/Director):', 'Junior') || '';
+  approveApplicantFinal(a.id, a.name, pin, rate, tier);
+}
+
+async function approveApplicantFinal(id, name, pin, rate, tier){
+  showToast('Approving '+name+'…');
+  try{
+    var r = await gas('approveApplicant', {
+      adminPin:ADMIN_PIN_STORED, id:id, name:name, pin:pin, rate:rate, tier:tier
+    });
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ '+r.message);
+    await refreshAdminData();
+    renderApplicants();
+    renderEmpList();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function rejectApplicant(id, name){
+  if(!confirm('Reject and DELETE the application from "'+name+'"? This cannot be undone.')) return;
+  try{
+    var r = await gas('rejectApplicant', {adminPin:ADMIN_PIN_STORED, id:id});
+    if(!r.ok) throw new Error(r.error);
+    showToast('🗑 Application removed');
+    await refreshAdminData();
+    renderApplicants();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
 function renderEmpList(){ filterEmpList(); }
 
 function filterEmpList(){
-  var staff = (ADMIN_DATA.staff||[]);
+  var staff = (ADMIN_DATA.staff||[]).filter(function(s){ return s.status !== 'pending'; });
   var q = (document.getElementById('emp-search')?.value||'').toLowerCase().trim();
   var f = document.getElementById('emp-filter')?.value || 'active';
   var list = staff.filter(function(s){
