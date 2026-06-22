@@ -1777,6 +1777,31 @@ function openApplicantDetail(id){
   var additionalNotes = extractSection('📋');
   var freeNotes = extractSection('📝');
 
+  // Helper: convert any http/https URL in text to a clickable link
+  function autolink(text){
+    if(!text) return '';
+    var safe = esc(text);
+    return safe.replace(/(https?:\/\/[^\s<>"']+)/g, function(url){
+      return '<a href="'+url+'" target="_blank" style="color:var(--teal);text-decoration:underline;word-break:break-all;">🔗 '+url+'</a>';
+    });
+  }
+
+  // Extract specific URLs from the additionalNotes block
+  function findUrlInNotes(label){
+    if(!additionalNotes) return '';
+    var m = additionalNotes.match(new RegExp(label + ':\\s*(https?:\\/\\/\\S+)', 'i'));
+    return m ? m[1] : '';
+  }
+  var idPhotoUrl = findUrlInNotes('Gov ID');
+  var clearanceUrl = findUrlInNotes('Clearance');
+
+  // Build all-links section
+  var links = [];
+  if(a.resumeUrl) links.push({label:'📄 Resume / CV', url:a.resumeUrl});
+  if(a.photoUrl)  links.push({label:'📷 Profile Photo', url:a.photoUrl});
+  if(idPhotoUrl)  links.push({label:'🪪 Government ID', url:idPhotoUrl});
+  if(clearanceUrl) links.push({label:'🛡 NBI / Police Clearance', url:clearanceUrl});
+
   var html =
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:14px;">'+
       '<div style="flex:1;">'+
@@ -1834,12 +1859,17 @@ function openApplicantDetail(id){
       row('Account #', esc(a.bankAccount))+
     '</div>'+
 
-    sectionTitle('📎 Documents')+
-      row('Resume', a.resumeUrl ? '<a href="'+esc(a.resumeUrl)+'" target="_blank" style="color:var(--teal);">📄 View Resume</a>' : '')+
-      row('Photo', a.photoUrl ? '<a href="'+esc(a.photoUrl)+'" target="_blank" style="color:var(--teal);">📷 View Photo</a>' : '')+
+    sectionTitle('📎 All Submitted Links & Documents')+
+      (links.length ? links.map(function(l){
+        return '<div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid var(--border);">'+
+          '<div style="font-size:12px;font-weight:600;color:var(--slate);min-width:160px;">'+l.label+'</div>'+
+          '<a href="'+esc(l.url)+'" target="_blank" style="color:var(--teal);text-decoration:underline;word-break:break-all;font-size:12px;flex:1;">🔗 Open Link</a>'+
+          '<button onclick="navigator.clipboard.writeText(\''+esc(l.url).replace(/'/g,"\\'")+'\').then(function(){showToast(\'Copied!\')})" class="btn btn-sm" style="flex-shrink:0;">📋 Copy</button>'+
+        '</div>';
+      }).join('') : '<div style="padding:12px;color:var(--muted);font-style:italic;font-size:12px;">No documents uploaded</div>')+
     '</div>'+
 
-    (additionalNotes ? sectionTitle('📋 Additional Info')+row('Details', '<pre style="white-space:pre-wrap;font-family:inherit;margin:0;font-size:13px;color:var(--slate);">'+esc(additionalNotes)+'</pre>')+'</div>' : '')+
+    (additionalNotes ? sectionTitle('📋 Additional Info')+row('Details', '<pre style="white-space:pre-wrap;font-family:inherit;margin:0;font-size:13px;color:var(--slate);">'+autolink(additionalNotes)+'</pre>')+'</div>' : '')+
 
     (freeNotes ? sectionTitle('📝 Notes from Applicant')+row('Notes', '<em style="color:var(--slate);">"'+esc(freeNotes)+'"</em>')+'</div>' : '')+
 
@@ -1879,6 +1909,22 @@ function openCompareModal(){
     return matched.join('\n');
   }
 
+  // Helper: autolink URLs in text
+  function autolinkCell(text){
+    if(!text) return '';
+    return esc(text).replace(/(https?:\/\/[^\s<>"']+)/g, function(url){
+      return '<a href="'+url+'" target="_blank" style="color:var(--teal);text-decoration:underline;word-break:break-all;">🔗 link</a>';
+    });
+  }
+
+  // Extract URL from additional notes
+  function findUrlInAdditional(a, label){
+    var additionalNotes = extractSection(a.notesHr, '📋');
+    if(!additionalNotes) return '';
+    var m = additionalNotes.match(new RegExp(label + ':\\s*(https?:\\/\\/\\S+)', 'i'));
+    return m ? m[1] : '';
+  }
+
   // Define rows — label + value-extractor function
   var rows = [
     {label:'📷 Photo', val:function(a){ return a.photoUrl ? '<a href="'+esc(a.photoUrl)+'" target="_blank"><img src="'+esc(a.photoUrl)+'" style="width:60px;height:60px;border-radius:6px;object-fit:cover;" onerror="this.replaceWith(document.createTextNode(\'(broken)\'))"></a>' : '<span style="color:var(--muted);">—</span>'; }},
@@ -1900,9 +1946,12 @@ function openCompareModal(){
     {label:'🏛 Pag-IBIG', val:function(a){ return esc(a.pagibig) || '<span style="color:var(--muted);">—</span>'; }},
     {label:'🏛 TIN', val:function(a){ return esc(a.tin) || '<span style="color:var(--muted);">—</span>'; }},
     {label:'💳 Bank', val:function(a){ return (a.bankName||a.bankAccount) ? esc(a.bankName||'?')+'<br><span style="color:var(--muted);font-size:11px;">'+esc(a.bankAccount||'')+'</span>' : '<span style="color:var(--muted);">—</span>'; }},
-    {label:'📋 Additional', val:function(a){ var v = extractSection(a.notesHr,'📋'); return v ? '<div style="font-size:11px;white-space:pre-wrap;">'+esc(v)+'</div>' : '<span style="color:var(--muted);">—</span>'; }},
-    {label:'📝 Notes', val:function(a){ var v = extractSection(a.notesHr,'📝'); return v ? '<em style="font-size:11px;">"'+esc(v)+'"</em>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'📋 Additional', val:function(a){ var v = extractSection(a.notesHr,'📋'); return v ? '<div style="font-size:11px;white-space:pre-wrap;">'+autolinkCell(v)+'</div>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'📝 Notes', val:function(a){ var v = extractSection(a.notesHr,'📝'); return v ? '<em style="font-size:11px;">"'+autolinkCell(v)+'"</em>' : '<span style="color:var(--muted);">—</span>'; }},
     {label:'📄 Resume', val:function(a){ return a.resumeUrl ? '<a href="'+esc(a.resumeUrl)+'" target="_blank" style="color:var(--teal);">📄 View</a>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'📷 Photo', val:function(a){ return a.photoUrl ? '<a href="'+esc(a.photoUrl)+'" target="_blank" style="color:var(--teal);">📷 View</a>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'🪪 Gov ID', val:function(a){ var u = findUrlInAdditional(a,'Gov ID'); return u ? '<a href="'+esc(u)+'" target="_blank" style="color:var(--teal);">🪪 View</a>' : '<span style="color:var(--muted);">—</span>'; }},
+    {label:'🛡 Clearance', val:function(a){ var u = findUrlInAdditional(a,'Clearance'); return u ? '<a href="'+esc(u)+'" target="_blank" style="color:var(--teal);">🛡 View</a>' : '<span style="color:var(--muted);">—</span>'; }},
     {label:'Actions', val:function(a){
       return '<div style="display:flex;flex-direction:column;gap:4px;">'+
         '<button class="btn btn-sm" onclick="closeCompareModal();openApplicantDetail(\''+escAttr(a.id)+'\')">👁 Details</button>'+
