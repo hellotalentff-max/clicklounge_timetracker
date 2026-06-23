@@ -706,6 +706,17 @@ button:disabled{opacity:.5;cursor:default;}
 .emp-mtab.on{color:var(--teal);border-bottom-color:var(--teal);}
 </style>
 
+<!-- ── Approve Applicant Modal ── -->
+<div class="pm-bg" id="approve-bg" onclick="if(event.target===this)closeApproveModal()">
+  <div class="pm" style="max-width:480px;">
+    <div class="pm-h">
+      <span>Approve Applicant</span>
+      <button onclick="closeApproveModal()" style="background:rgba(255,255,255,.12);border:none;color:var(--cream);border-radius:6px;padding:4px 10px;cursor:pointer;">✕</button>
+    </div>
+    <div class="pm-b" id="approve-body"></div>
+  </div>
+</div>
+
 <!-- ── Applicant Detail Modal — full application form view ── -->
 <div class="pm-bg" id="applicant-detail-bg" onclick="if(event.target===this)closeApplicantDetail()">
   <div class="pm" style="max-width:720px;max-height:92vh;overflow-y:auto;">
@@ -2043,14 +2054,55 @@ function copySignupLink(){
 function openApproveApplicantModal(applicantId){
   var a = (ADMIN_DATA.staff||[]).find(function(s){ return s.id===applicantId && s.status==='pending'; });
   if(!a){ showToast('Applicant not found'); return; }
-  var pin = prompt('Approve "'+a.name+'"\n\nAssign a 4-digit PIN for clocking in:', '');
-  if(pin === null) return;
+  // Pre-fill expected rate if applicant provided one
+  var defaultRate = a.expectedRate || '';
+  var html =
+    '<h3 style="margin-bottom:6px;">✅ Approve Application</h3>'+
+    '<div style="font-size:13px;color:var(--muted);margin-bottom:14px;">Approving: <strong>'+esc(a.name)+'</strong> for <strong>'+esc(a.role||'(role to be set)')+'</strong></div>'+
+    '<div class="aform-grid">'+
+      '<div class="fg"><label class="fl">Clock-in PIN <span style="color:var(--danger);">*</span></label>'+
+        '<input type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" class="ainput" id="appr-pin" placeholder="4 digits" autocomplete="off">'+
+      '</div>'+
+      '<div class="fg"><label class="fl">Hourly Rate (₱) <span style="color:var(--danger);">*</span></label>'+
+        '<input type="number" min="1" step="0.01" class="ainput" id="appr-rate" placeholder="e.g. 100" value="'+esc(defaultRate)+'">'+
+      '</div>'+
+      '<div class="fg" style="grid-column:1/-1;"><label class="fl">Tier / Level</label>'+
+        '<select class="ainput" id="appr-tier">'+
+          '<option value="">— Select tier —</option>'+
+          '<option value="Trainee">Trainee</option>'+
+          '<option value="Junior" selected>Junior</option>'+
+          '<option value="Mid-level">Mid-level</option>'+
+          '<option value="Senior">Senior</option>'+
+          '<option value="Lead">Lead</option>'+
+          '<option value="Manager">Manager</option>'+
+          '<option value="Director">Director</option>'+
+        '</select>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">'+
+      '<button class="btn" onclick="closeApproveModal()">Cancel</button>'+
+      '<button class="btn btn-t" onclick="submitApproveModal(\''+escAttr(a.id)+'\',\''+escAttr(a.name)+'\')">✅ Approve & Activate</button>'+
+    '</div>';
+  document.getElementById('approve-body').innerHTML = html;
+  document.getElementById('approve-bg').classList.add('open');
+  setTimeout(function(){ document.getElementById('appr-pin').focus(); }, 100);
+}
+
+function closeApproveModal(){
+  document.getElementById('approve-bg').classList.remove('open');
+}
+
+function submitApproveModal(id, name){
+  var pin = (document.getElementById('appr-pin').value||'').trim();
   if(!/^\d{4}$/.test(pin)){ showToast('PIN must be exactly 4 digits.'); return; }
-  var rate = prompt('Hourly rate (₱) for '+a.name+':', '');
-  if(rate === null) return;
-  if(!rate || isNaN(parseFloat(rate)) || parseFloat(rate) <= 0){ showToast('Enter a valid hourly rate.'); return; }
-  var tier = prompt('Tier / Level (optional — Trainee/Junior/Mid/Senior/Lead/Manager/Director):', 'Junior') || '';
-  approveApplicantFinal(a.id, a.name, pin, rate, tier);
+  // Strip any non-numeric characters (peso sign, commas, spaces) before parsing
+  var rateRaw = (document.getElementById('appr-rate').value||'').trim();
+  var rateClean = rateRaw.replace(/[^\d.]/g,'');
+  var rate = parseFloat(rateClean);
+  if(!rateClean || isNaN(rate) || rate <= 0){ showToast('Enter a valid hourly rate (e.g. 100 or 150.50)'); return; }
+  var tier = document.getElementById('appr-tier').value || '';
+  closeApproveModal();
+  approveApplicantFinal(id, name, pin, rate, tier);
 }
 
 async function approveApplicantFinal(id, name, pin, rate, tier){
