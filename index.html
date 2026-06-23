@@ -1279,8 +1279,8 @@ async function refreshMyData(){
 }
 
 function viewPastEval(id){
-  var e = (MY_DATA.evals||[]).find(function(x){ return x.id === id; });
-  if(!e) return;
+  var e = (MY_DATA.evals||[]).find(function(x){ return String(x.id) === String(id); });
+  if(!e){ showToast('Evaluation not found'); return; }
   var kpiTable = EVAL_KPIS.map(function(k){
     var s = e['self'+k.key]||'—';
     var a = e['admin'+k.key]||'—';
