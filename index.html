@@ -809,15 +809,15 @@ async function gas(action, payload){
   var url = GAS_URL || localStorage.getItem('tc_gas_url') || '';
   if(!url) throw new Error('GAS URL not configured. Go to Admin → Settings.');
   var b = btoa(unescape(encodeURIComponent(JSON.stringify({action:action, payload:payload||{}}))));
-  // Send action both as base64 'd' AND as plain 'action' param — bulletproof
   var u = url + '?d=' + encodeURIComponent(b) + '&action=' + encodeURIComponent(action);
-  // Also serialize critical payload fields as plain URL params (some GAS versions need this)
+  // Send EVERY payload field as a URL param too — guarantees data arrives even if base64 decode fails
   if(payload){
-    if(payload.adminPin) u += '&adminPin=' + encodeURIComponent(payload.adminPin);
-    if(payload.name)     u += '&name='     + encodeURIComponent(payload.name);
-    if(payload.pin)      u += '&pin='      + encodeURIComponent(payload.pin);
-    if(payload.newPin)   u += '&newPin='   + encodeURIComponent(payload.newPin);
-    if(payload.sheetId)  u += '&sheetId='  + encodeURIComponent(payload.sheetId);
+    Object.keys(payload).forEach(function(k){
+      var v = payload[k];
+      if(v !== undefined && v !== null && v !== ''){
+        u += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(String(v));
+      }
+    });
   }
 
   // Use JSONP exclusively — works on GitHub Pages, local files, and everywhere.
