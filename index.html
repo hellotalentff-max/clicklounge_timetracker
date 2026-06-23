@@ -2027,24 +2027,37 @@ function renderReviews(){
 }
 
 function openReviewModal(id){
-  var e = ADMIN_EVALS.find(function(x){ return x.id === id; });
-  if(!e) return;
-  // Build the side-by-side review form
-  var html =
-    '<h3 style="margin-bottom:6px;">⭐ Review Evaluation — '+esc(e.employee)+'</h3>'+
-    '<div style="font-size:11px;color:var(--muted);margin-bottom:14px;">'+esc(e.period)+' · Submitted: '+esc(e.submittedAt||e.createdAt)+'</div>'+
+  console.log('Opening review modal for id:', id);
+  if(typeof EVAL_KPIS === 'undefined'){
+    showToast('Error: KPI definitions missing. Refresh the page.');
+    return;
+  }
+  var e = (ADMIN_EVALS||[]).find(function(x){ return String(x.id) === String(id); });
+  if(!e){
+    showToast('Evaluation not found in cache. Click ⭐ Reviews tab to reload.');
+    return;
+  }
+  var isReviewed = (e.status === 'reviewed');
 
+  // Build the review form
+  var html =
+    '<h3 style="margin-bottom:6px;">⭐ '+(isReviewed?'Reviewed: ':'Review: ')+esc(e.employee)+'</h3>'+
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:14px;">'+esc(e.period||'—')+' · Submitted: '+esc(e.submittedAt||e.createdAt)+(isReviewed?' · Reviewed: '+esc(e.adminReviewDate||''):'')+'</div>'+
+
+    // ── Side-by-side KPI ratings ──
     '<div style="background:var(--light);padding:12px;border-radius:10px;margin-bottom:14px;">'+
-      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">📊 Rate the employee (1-5) — Self ratings shown for reference</div>'+
+      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">📊 KPI Ratings — Employee\'s Self-Rating vs Your Rating</div>'+
       EVAL_KPIS.map(function(k){
-        var sv = e['self'+k.key] || '—';
+        var sv = e['self'+k.key] || '';
         var av = e['admin'+k.key] || '';
         return '<div style="background:var(--white);border-radius:8px;padding:10px;margin-bottom:6px;">'+
-          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'+
-            '<div><strong>'+k.icon+' '+k.label+'</strong></div>'+
-            '<div style="font-size:11px;color:var(--teal);">Self: <strong>'+sv+'</strong></div>'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px;">'+
+            '<div style="font-size:13px;"><strong>'+k.icon+' '+esc(k.label)+'</strong></div>'+
+            '<div style="font-size:11px;color:var(--teal);">Self: <strong style="font-size:14px;">'+(sv||'—')+'</strong> / 5</div>'+
           '</div>'+
-          '<div class="rating-row" data-key="admin'+k.key+'">'+
+          '<div style="font-size:10px;color:var(--muted);margin-bottom:6px;font-style:italic;">'+esc(k.desc)+'</div>'+
+          '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-bottom:4px;">YOUR RATING:</div>'+
+          '<div class="rating-row" data-key="admin'+k.key+'" data-value="'+(av||'')+'">'+
             [1,2,3,4,5].map(function(n){
               var labels = ['Needs Work','Below','Meets','Exceeds','Outstanding'];
               var active = (parseInt(av) === n) ? ' active' : '';
@@ -2055,30 +2068,43 @@ function openReviewModal(id){
       }).join('')+
     '</div>'+
 
-    '<div style="background:rgba(58,125,92,.06);border-radius:10px;padding:12px;margin-bottom:10px;">'+
-      '<div style="font-size:11px;font-weight:700;color:var(--success);margin-bottom:8px;">🪞 EMPLOYEE\'S OWN REFLECTION</div>'+
-      (e.selfProudOf?'<div style="font-size:12px;margin-bottom:8px;"><strong>🏆 Proud of:</strong> '+esc(e.selfProudOf)+'</div>':'')+
-      (e.selfChallenge?'<div style="font-size:12px;margin-bottom:8px;"><strong>🌪 Challenge:</strong> '+esc(e.selfChallenge)+'</div>':'')+
-      (e.selfImprove?'<div style="font-size:12px;margin-bottom:8px;"><strong>🎯 Wants to improve:</strong> '+esc(e.selfImprove)+'</div>':'')+
-      (e.selfGoals?'<div style="font-size:12px;margin-bottom:8px;"><strong>🚀 Goals:</strong> '+esc(e.selfGoals)+'</div>':'')+
-      (e.selfSupportNeeded?'<div style="font-size:12px;"><strong>🤝 Support needed:</strong> '+esc(e.selfSupportNeeded)+'</div>':'')+
+    // ── Employee's own reflections ──
+    '<div style="background:rgba(58,125,92,.06);border-radius:10px;padding:14px;margin-bottom:14px;border-left:3px solid var(--success);">'+
+      '<div style="font-size:11px;font-weight:700;color:var(--success);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">🪞 EMPLOYEE\'S OWN REFLECTION</div>'+
+      (e.selfProudOf?'<div style="font-size:12px;margin-bottom:8px;"><strong>🏆 Proud of:</strong><br>'+esc(e.selfProudOf)+'</div>':'')+
+      (e.selfChallenge?'<div style="font-size:12px;margin-bottom:8px;"><strong>🌪 Biggest challenge:</strong><br>'+esc(e.selfChallenge)+'</div>':'')+
+      (e.selfImprove?'<div style="font-size:12px;margin-bottom:8px;"><strong>🎯 Wants to improve:</strong><br>'+esc(e.selfImprove)+'</div>':'')+
+      (e.selfGoals?'<div style="font-size:12px;margin-bottom:8px;"><strong>🚀 Goals:</strong><br>'+esc(e.selfGoals)+'</div>':'')+
+      (e.selfSupportNeeded?'<div style="font-size:12px;"><strong>🤝 Support needed:</strong><br>'+esc(e.selfSupportNeeded)+'</div>':'')+
+      ((!e.selfProudOf && !e.selfChallenge && !e.selfImprove && !e.selfGoals && !e.selfSupportNeeded) ? '<div style="font-size:12px;color:var(--muted);font-style:italic;">No written reflection provided.</div>' : '')+
     '</div>'+
 
-    '<h3 style="font-size:13px;font-weight:700;margin:14px 0 8px;">📝 Your Feedback</h3>'+
-    '<div class="fg" style="margin-bottom:10px;"><label class="fl">🌟 Strengths</label><textarea id="ad-strengths" class="ainput" rows="3" placeholder="What this employee does really well…">'+esc(e.adminStrengths||'')+'</textarea></div>'+
-    '<div class="fg" style="margin-bottom:10px;"><label class="fl">🎯 Areas to Improve</label><textarea id="ad-improve" class="ainput" rows="3" placeholder="Specific areas they should focus on…">'+esc(e.adminImprove||'')+'</textarea></div>'+
-    '<div class="fg" style="margin-bottom:10px;"><label class="fl">✅ Action Items</label><textarea id="ad-actions" class="ainput" rows="3" placeholder="Concrete steps for the next period (training, projects, milestones)…">'+esc(e.adminActions||'')+'</textarea></div>'+
-    '<div class="fg" style="margin-bottom:10px;"><label class="fl">📝 General Notes</label><textarea id="ad-notes" class="ainput" rows="3" placeholder="Additional context, anything else worth recording…">'+esc(e.adminNotes||'')+'</textarea></div>'+
-    '<div class="fg" style="margin-bottom:14px;"><label class="fl">Reviewer Name</label><input id="ad-reviewer" class="ainput" value="'+esc(e.adminReviewer||'')+'" placeholder="Your name"></div>'+
+    // ── Your feedback ──
+    '<div style="background:rgba(215,144,104,.06);border-radius:10px;padding:14px;border-left:3px solid var(--gold);">'+
+      '<div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">📝 YOUR FEEDBACK</div>'+
+      '<div style="font-size:10px;color:var(--muted);margin-bottom:10px;font-style:italic;">This feedback is recorded in '+esc(e.employee)+'\'s file and visible to them. Use it as basis for promotions, raises, or recognition.</div>'+
+      '<div class="fg" style="margin-bottom:10px;"><label class="fl">🌟 Strengths</label><textarea id="ad-strengths" class="ainput" rows="3" placeholder="What this employee does really well…">'+esc(e.adminStrengths||'')+'</textarea></div>'+
+      '<div class="fg" style="margin-bottom:10px;"><label class="fl">🎯 Areas to Improve</label><textarea id="ad-improve" class="ainput" rows="3" placeholder="Specific areas they should focus on…">'+esc(e.adminImprove||'')+'</textarea></div>'+
+      '<div class="fg" style="margin-bottom:10px;"><label class="fl">✅ Action Items / Next Steps</label><textarea id="ad-actions" class="ainput" rows="3" placeholder="Concrete next steps (training, projects, milestones)…">'+esc(e.adminActions||'')+'</textarea></div>'+
+      '<div class="fg" style="margin-bottom:10px;"><label class="fl">💼 Notes for Future Decisions <span style="color:var(--muted);font-size:10px;">(promotion, raise, perks)</span></label><textarea id="ad-notes" class="ainput" rows="3" placeholder="Private notes to consider for promotions, salary increases, bonuses, etc…">'+esc(e.adminNotes||'')+'</textarea></div>'+
+      '<div class="fg" style="margin-bottom:14px;"><label class="fl">Your Name (Reviewer)</label><input id="ad-reviewer" class="ainput" value="'+esc(e.adminReviewer||'')+'" placeholder="Your name"></div>'+
+    '</div>'+
 
-    '<div style="display:flex;gap:8px;justify-content:flex-end;padding-top:14px;border-top:1px solid var(--border);">'+
-      '<button class="btn" onclick="closeReviewModal()">Cancel</button>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end;padding-top:14px;border-top:1px solid var(--border);flex-wrap:wrap;">'+
       '<button class="btn btn-d btn-sm" onclick="deleteEvaluation(\''+esc(e.id)+'\')" style="margin-right:auto;">🗑 Delete</button>'+
-      '<button class="btn btn-t" onclick="submitReviewModal(\''+esc(e.id)+'\')">'+(e.status==='reviewed'?'💾 Update Review':'✅ Save Review')+'</button>'+
+      '<button class="btn" onclick="closeReviewModal()">Cancel</button>'+
+      '<button class="btn btn-t" onclick="submitReviewModal(\''+esc(e.id)+'\')">'+(isReviewed?'💾 Update Review':'✅ Save & Submit Review')+'</button>'+
     '</div>';
 
-  document.getElementById('review-body').innerHTML = html;
+  var bodyEl = document.getElementById('review-body');
+  if(!bodyEl){
+    showToast('Review modal not found in DOM');
+    console.error('review-body element not found');
+    return;
+  }
+  bodyEl.innerHTML = html;
   document.getElementById('review-bg').classList.add('open');
+  console.log('Review modal opened with', EVAL_KPIS.length, 'KPIs');
 }
 
 function closeReviewModal(){
@@ -2086,24 +2112,40 @@ function closeReviewModal(){
 }
 
 function setAdminRating(field, value, btn){
-  // Store on the button's parent dataset, picked up at submit
   var row = btn.parentElement;
   row.querySelectorAll('.rate-btn').forEach(function(b){ b.classList.remove('active'); });
   btn.classList.add('active');
   row.dataset.value = value;
+  row.setAttribute('data-value', value);
 }
 
 async function submitReviewModal(id){
   var payload = { id:id, adminPin:ADMIN_PIN_STORED };
+  // Read each KPI rating from the active button or data-value
   EVAL_KPIS.forEach(function(k){
     var row = document.querySelector('[data-key="admin'+k.key+'"]');
-    if(row && row.dataset.value) payload['admin'+k.key] = row.dataset.value;
+    if(row){
+      var active = row.querySelector('.rate-btn.active');
+      if(active){
+        // Extract the number from the .rate-num element
+        var numEl = active.querySelector('.rate-num');
+        if(numEl) payload['admin'+k.key] = parseInt(numEl.textContent) || '';
+      } else if(row.dataset.value){
+        payload['admin'+k.key] = row.dataset.value;
+      }
+    }
   });
-  payload.adminStrengths = document.getElementById('ad-strengths').value || '';
-  payload.adminImprove   = document.getElementById('ad-improve').value || '';
-  payload.adminActions   = document.getElementById('ad-actions').value || '';
-  payload.adminNotes     = document.getElementById('ad-notes').value || '';
-  payload.adminReviewer  = document.getElementById('ad-reviewer').value || 'Admin';
+  payload.adminStrengths = (document.getElementById('ad-strengths')||{}).value || '';
+  payload.adminImprove   = (document.getElementById('ad-improve')||{}).value || '';
+  payload.adminActions   = (document.getElementById('ad-actions')||{}).value || '';
+  payload.adminNotes     = (document.getElementById('ad-notes')||{}).value || '';
+  payload.adminReviewer  = (document.getElementById('ad-reviewer')||{}).value || 'Admin';
+
+  // Warn if no KPIs rated
+  var ratedCount = EVAL_KPIS.filter(function(k){ return payload['admin'+k.key]; }).length;
+  if(ratedCount === 0){
+    if(!confirm('You haven\'t rated any KPI. Save anyway with only written feedback?')) return;
+  }
 
   showToast('Saving review…');
   try{
@@ -2551,23 +2593,30 @@ function closeApproveModal(){
 }
 
 function submitApproveModal(id, name){
-  var pin = (document.getElementById('appr-pin').value||'').trim();
+  var pinEl = document.getElementById('appr-pin');
+  var rateEl = document.getElementById('appr-rate');
+  var tierEl = document.getElementById('appr-tier');
+  if(!pinEl || !rateEl){ showToast('Form not found, please refresh'); return; }
+  var pin = (pinEl.value||'').trim();
   if(!/^\d{4}$/.test(pin)){ showToast('PIN must be exactly 4 digits.'); return; }
-  // Strip any non-numeric characters (peso sign, commas, spaces) before parsing
-  var rateRaw = (document.getElementById('appr-rate').value||'').trim();
-  var rateClean = rateRaw.replace(/[^\d.]/g,'');
-  var rate = parseFloat(rateClean);
-  if(!rateClean || isNaN(rate) || rate <= 0){ showToast('Enter a valid hourly rate (e.g. 100 or 150.50)'); return; }
-  var tier = document.getElementById('appr-tier').value || '';
+  // Read rate as number — input type="number" gives valueAsNumber as a true number
+  var rateNum = parseFloat((rateEl.value||'').replace(/[^\d.]/g,''));
+  if(isNaN(rateNum) || rateNum <= 0){
+    showToast('Enter a valid hourly rate (e.g. 100). Got: "'+rateEl.value+'"');
+    return;
+  }
+  var tier = (tierEl && tierEl.value) || '';
   closeApproveModal();
-  approveApplicantFinal(id, name, pin, rate, tier);
+  approveApplicantFinal(id, name, pin, rateNum, tier);
 }
 
 async function approveApplicantFinal(id, name, pin, rate, tier){
   showToast('Approving '+name+'…');
+  // Force rate to a plain number string for transit
+  var rateStr = String(parseFloat(rate) || 0);
   try{
     var r = await gas('approveApplicant', {
-      adminPin:ADMIN_PIN_STORED, id:id, name:name, pin:pin, rate:rate, tier:tier
+      adminPin:ADMIN_PIN_STORED, id:id, name:name, pin:String(pin), rate:rateStr, tier:tier||''
     });
     if(!r.ok) throw new Error(r.error);
     showToast('✅ '+r.message);
