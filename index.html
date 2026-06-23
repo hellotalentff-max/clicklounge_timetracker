@@ -148,6 +148,14 @@ button:disabled{opacity:.5;cursor:default;}
 /* Tier badges */
 .tier-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;display:inline-block;}
 .prof-tab{padding:8px 14px;font-size:11px;font-weight:600;color:var(--muted);border:none;background:none;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent;margin-bottom:-2px;}
+.eval-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;}
+.rating-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px;}
+.rate-btn{background:var(--white);border:2px solid var(--border);border-radius:10px;padding:8px 4px;cursor:pointer;font-family:inherit;transition:all .12s;display:flex;flex-direction:column;align-items:center;gap:2px;}
+.rate-btn:hover{border-color:var(--teal);background:rgba(81,137,125,0.05);}
+.rate-btn.active{background:var(--teal);color:var(--cream);border-color:var(--teal);box-shadow:0 2px 6px rgba(81,137,125,.3);}
+.rate-num{font-size:18px;font-weight:800;line-height:1;}
+.rate-lbl{font-size:9px;font-weight:600;line-height:1.1;text-align:center;}
+@media (max-width:520px){.rate-lbl{display:none;}.rate-num{font-size:16px;}}
 .prof-tab.on{color:var(--teal);border-bottom-color:var(--teal);}
 .tier-trainee{background:rgba(107,140,140,.12);color:#6b8c8c;}
 .tier-junior{background:rgba(74,127,181,.12);color:#4a7fb5;}
@@ -247,6 +255,7 @@ button:disabled{opacity:.5;cursor:default;}
     <div class="staff-tabs">
       <button class="stab on" onclick="sTab('records')" id="stab-records">📋 My Records</button>
       <button class="stab" onclick="sTab('leave')" id="stab-leave">📅 Leave</button>
+      <button class="stab" onclick="sTab('eval')" id="stab-eval">⭐ Self-Eval</button>
       <button class="stab" onclick="sTab('profile')" id="stab-profile">👤 My Profile</button>
     </div>
 
@@ -269,6 +278,11 @@ button:disabled{opacity:.5;cursor:default;}
         <button class="btn-submit" onclick="submitLeave()">📩 Submit Request</button>
       </div>
       <div style="margin-top:14px;" id="s-leave-history"></div>
+    </div>
+
+    <!-- Self-Evaluation Tab -->
+    <div id="stab-panel-eval" style="display:none;">
+      <div id="s-eval-content"></div>
     </div>
 
     <!-- Profile Tab -->
@@ -295,6 +309,7 @@ button:disabled{opacity:.5;cursor:default;}
     <button class="atab" onclick="aTab('reports')" id="atab-reports">📄 Reports</button>
     <button class="atab" onclick="aTab('emp')" id="atab-emp">👥 Employees</button>
     <button class="atab" onclick="aTab('applicants')" id="atab-applicants">📝 Applicants <span class="badge-n" id="app-badge" style="display:none">0</span></button>
+    <button class="atab" onclick="aTab('reviews')" id="atab-reviews">⭐ Reviews <span class="badge-n" id="rev-badge" style="display:none">0</span></button>
     <button class="atab" onclick="aTab('hol')" id="atab-hol">🏖 Holidays</button>
     <button class="atab" onclick="aTab('set')" id="atab-set">⚙ Settings</button>
   </div>
@@ -386,6 +401,26 @@ button:disabled{opacity:.5;cursor:default;}
         <input type="text" id="signup-link" readonly style="width:100%;padding:8px 12px;background:var(--white);border:1.5px solid var(--border);border-radius:8px;font-size:11px;font-family:monospace;margin-top:6px;" placeholder="Set your signup form URL below…">
       </div>
       <div id="applicants-list"></div>
+    </div>
+
+    <!-- REVIEWS -->
+    <div id="apanel-reviews" style="display:none;">
+      <div style="background:rgba(81,137,125,.08);border:1.5px solid rgba(81,137,125,.2);border-radius:12px;padding:14px 16px;margin-bottom:14px;">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px;">⭐ Performance Evaluations</div>
+        <div style="font-size:11px;color:var(--muted);">Employees fill out self-evaluations from their TimeCommand. Review here and add your feedback.</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+        <select id="rev-filter" class="ainput" onchange="renderReviews()" style="max-width:200px;">
+          <option value="all">All evaluations</option>
+          <option value="submitted" selected>⏳ Pending review</option>
+          <option value="reviewed">✓ Reviewed</option>
+          <option value="draft">📝 Draft only</option>
+        </select>
+        <select id="rev-emp-filter" class="ainput" onchange="renderReviews()" style="max-width:200px;">
+          <option value="">All employees</option>
+        </select>
+      </div>
+      <div id="reviews-list"></div>
     </div>
 
     <!-- HOLIDAYS -->
@@ -705,6 +740,17 @@ button:disabled{opacity:.5;cursor:default;}
 .emp-mtab{padding:8px 14px;font-size:11px;font-weight:600;color:var(--muted);border:none;background:none;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent;margin-bottom:-2px;}
 .emp-mtab.on{color:var(--teal);border-bottom-color:var(--teal);}
 </style>
+
+<!-- ── Performance Review Modal ── -->
+<div class="pm-bg" id="review-bg" onclick="if(event.target===this)closeReviewModal()">
+  <div class="pm" style="max-width:720px;max-height:92vh;overflow-y:auto;">
+    <div class="pm-h" style="position:sticky;top:0;z-index:2;">
+      <span>⭐ Review Evaluation</span>
+      <button onclick="closeReviewModal()" style="background:rgba(255,255,255,.12);border:none;color:var(--cream);border-radius:6px;padding:4px 10px;cursor:pointer;">✕</button>
+    </div>
+    <div class="pm-b" id="review-body"></div>
+  </div>
+</div>
 
 <!-- ── Approve Applicant Modal ── -->
 <div class="pm-bg" id="approve-bg" onclick="if(event.target===this)closeApproveModal()">
@@ -1035,14 +1081,244 @@ function renderLeaveHistory(){
 }
 
 function sTab(id){
-  ['records','leave','profile'].forEach(function(t){
+  ['records','leave','eval','profile'].forEach(function(t){
     var btn = document.getElementById('stab-'+t);
     var pnl = document.getElementById('stab-panel-'+t);
     if(btn) btn.classList.toggle('on',t===id);
     if(pnl) pnl.style.display=t===id?'':'none';
   });
   if(id === 'profile') renderMyProfile();
+  if(id === 'eval') renderSelfEval();
 }
+
+// ── KPI definitions used by evaluation form ──
+var EVAL_KPIS = [
+  {key:'Quality',       icon:'📸', label:'Quality of Work',         desc:'How well do I meet our studio quality standards? Attention to detail, retakes needed?'},
+  {key:'Attendance',    icon:'⏰', label:'Attendance & Punctuality', desc:'Do I show up on time and stick to my schedule? Reliable when others depend on me?'},
+  {key:'Productivity',  icon:'🎯', label:'Productivity & Output',   desc:'How much do I get done? Do I finish tasks on time? Match my output to expectations?'},
+  {key:'Teamwork',      icon:'🤝', label:'Teamwork',                desc:'Do I help teammates? Share knowledge? Show up for shoots when others need backup?'},
+  {key:'Communication', icon:'💬', label:'Communication',           desc:'Am I clear and responsive in messages? Update people when something changes?'},
+  {key:'ClientService', icon:'😊', label:'Client Service',          desc:'Friendly and professional with clients? Make them feel comfortable during shoots?'},
+  {key:'Initiative',    icon:'💡', label:'Initiative & Growth',     desc:'Do I learn new skills? Suggest improvements? Take ownership without being asked?'},
+  {key:'Process',       icon:'📋', label:'Process & Standards',     desc:'Do I follow our SOPs? Use the systems correctly (Tasks, TimeCommand, POS)?'}
+];
+
+var CURRENT_EVAL = null; // Holds the in-progress evaluation object
+
+function renderSelfEval(){
+  var el = document.getElementById('s-eval-content');
+  if(!el) return;
+  var evals = (MY_DATA && MY_DATA.evals) || [];
+
+  // Find an active draft (current period), or null
+  var draft = evals.find(function(e){ return e.status === 'draft'; });
+  var pastEvals = evals.filter(function(e){ return e.status !== 'draft'; });
+
+  // Build the form
+  var rating = draft || {};
+  CURRENT_EVAL = rating;
+
+  function ratingRow(kpi){
+    var v = rating['self'+kpi.key] || '';
+    var html = '<div class="eval-card">'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">'+
+        '<span style="font-size:20px;">'+kpi.icon+'</span>'+
+        '<div style="flex:1;"><strong>'+kpi.label+'</strong><div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4;">'+kpi.desc+'</div></div>'+
+      '</div>'+
+      '<div class="rating-row" data-key="self'+kpi.key+'">';
+    [1,2,3,4,5].forEach(function(n){
+      var labels = ['Needs Work', 'Below', 'Meets', 'Exceeds', 'Outstanding'];
+      var active = (parseInt(v) === n) ? ' active' : '';
+      html += '<button type="button" class="rate-btn'+active+'" onclick="setRating(\'self'+kpi.key+'\','+n+',this)">'+
+        '<div class="rate-num">'+n+'</div>'+
+        '<div class="rate-lbl">'+labels[n-1]+'</div>'+
+      '</button>';
+    });
+    html += '</div></div>';
+    return html;
+  }
+
+  function textBox(field, icon, label, placeholder){
+    var v = rating[field] || '';
+    return '<div class="eval-card">'+
+      '<label style="display:block;margin-bottom:6px;"><span style="font-size:18px;">'+icon+'</span> <strong>'+label+'</strong></label>'+
+      '<textarea id="ev-'+field+'" class="ainput" rows="3" placeholder="'+placeholder+'" style="width:100%;">'+esc(v)+'</textarea>'+
+    '</div>';
+  }
+
+  // Submitted/reviewed history items
+  var historyHtml = '';
+  if(pastEvals.length){
+    historyHtml = '<div style="margin-top:24px;">'+
+      '<h3 style="font-size:13px;font-weight:700;margin-bottom:10px;">📜 My Past Evaluations</h3>'+
+      pastEvals.map(function(e){
+        var statusBadge = e.status === 'reviewed'
+          ? '<span style="background:rgba(58,125,92,.15);color:var(--success);padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;">✓ Reviewed</span>'
+          : '<span style="background:rgba(81,137,125,.15);color:var(--teal);padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;">⏳ Awaiting Review</span>';
+        return '<div class="eval-card" style="cursor:pointer;" onclick="viewPastEval(\''+e.id+'\')">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;">'+
+            '<div>'+
+              '<div style="font-weight:700;">'+esc(e.period)+' — '+esc(e.createdAt)+'</div>'+
+              '<div style="font-size:11px;color:var(--muted);margin-top:3px;">Self: ⭐ '+(e.selfOverall||'—')+' / 5'+(e.adminOverall?' · Manager: ⭐ '+e.adminOverall+' / 5':'')+'</div>'+
+            '</div>'+
+            statusBadge+
+          '</div>'+
+        '</div>';
+      }).join('')+
+    '</div>';
+  }
+
+  // Status banner if there's a submitted-but-not-reviewed eval
+  var pendingReview = evals.find(function(e){ return e.status === 'submitted'; });
+  var pendingBanner = '';
+  if(pendingReview){
+    pendingBanner = '<div style="background:rgba(81,137,125,.08);border-left:3px solid var(--teal);border-radius:8px;padding:12px 14px;margin-bottom:18px;">'+
+      '<div style="font-weight:700;color:var(--teal);">⏳ Your last self-evaluation is awaiting manager review</div>'+
+      '<div style="font-size:11px;color:var(--muted);margin-top:3px;">Submitted on '+esc(pendingReview.submittedAt||pendingReview.createdAt)+'. Your manager will share feedback soon.</div>'+
+    '</div>';
+  }
+
+  el.innerHTML =
+    pendingBanner+
+    '<div style="background:linear-gradient(135deg,var(--dark),var(--slate));color:var(--cream);border-radius:14px;padding:18px;margin-bottom:18px;">'+
+      '<div style="font-size:18px;font-weight:800;margin-bottom:4px;">⭐ Self-Evaluation</div>'+
+      '<div style="font-size:12px;color:rgba(245,240,232,.7);line-height:1.5;">Rate yourself honestly on each area. Your manager will review and add their feedback after.</div>'+
+    '</div>'+
+
+    // Period selector
+    '<div class="eval-card">'+
+      '<label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Review Period</label>'+
+      '<select id="ev-period" class="ainput">'+
+        ['Monthly','Quarterly','Annual','Probation','Project-Based'].map(function(p){
+          var sel = (rating.period === p || (!rating.period && p === 'Quarterly')) ? ' selected' : '';
+          return '<option'+sel+'>'+p+'</option>';
+        }).join('')+
+      '</select>'+
+    '</div>'+
+
+    // KPI ratings
+    '<h3 style="font-size:13px;font-weight:700;margin:16px 0 10px;">📊 Rate Your Performance (1-5)</h3>'+
+    EVAL_KPIS.map(ratingRow).join('')+
+
+    // Open-ended reflection
+    '<h3 style="font-size:13px;font-weight:700;margin:16px 0 10px;">🪞 Reflection</h3>'+
+    textBox('selfProudOf',       '🏆', 'What am I most proud of this period?', 'A specific accomplishment, project, or moment I felt proud of…')+
+    textBox('selfChallenge',     '🌪', 'What was my biggest challenge?', 'Something difficult I faced (work, process, people, personal). How I handled it…')+
+    textBox('selfImprove',       '🎯', 'One thing I want to improve next period', 'Be honest — what would I do differently?')+
+    textBox('selfGoals',         '🚀', 'My goals for the next period', '2-3 specific goals I want to achieve…')+
+    textBox('selfSupportNeeded', '🤝', 'Support I need from leadership', 'Training, equipment, time, mentorship, feedback…')+
+
+    // Action buttons
+    '<div style="background:var(--white);padding:16px;border-radius:12px;border:1px solid var(--border);margin-top:14px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">'+
+      (rating.id ? '<span style="margin-right:auto;font-size:11px;color:var(--muted);align-self:center;">💾 Draft saved · ID: '+esc(rating.id.slice(0,8))+'</span>' : '')+
+      '<button class="btn btn-outline" onclick="saveDraftEval()">💾 Save Draft</button>'+
+      '<button class="btn btn-gold" onclick="submitFinalEval()">📤 Submit to Manager</button>'+
+    '</div>'+
+
+    historyHtml;
+}
+
+function setRating(field, value, btn){
+  CURRENT_EVAL = CURRENT_EVAL || {};
+  CURRENT_EVAL[field] = value;
+  // Update UI
+  var row = btn.parentElement;
+  row.querySelectorAll('.rate-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+}
+
+function collectEvalData(){
+  CURRENT_EVAL = CURRENT_EVAL || {};
+  CURRENT_EVAL.period = document.getElementById('ev-period').value;
+  ['selfProudOf','selfChallenge','selfImprove','selfGoals','selfSupportNeeded'].forEach(function(f){
+    var el = document.getElementById('ev-'+f);
+    if(el) CURRENT_EVAL[f] = el.value;
+  });
+  return CURRENT_EVAL;
+}
+
+async function saveDraftEval(){
+  var data = collectEvalData();
+  showToast('💾 Saving…');
+  try{
+    var payload = Object.assign({}, data, {name:CURR_USER.name, pin:CURR_PIN});
+    var r = await gas('saveSelfEval', payload);
+    if(!r.ok) throw new Error(r.error);
+    showToast('✓ Draft saved');
+    CURRENT_EVAL.id = r.id;
+    await refreshMyData();
+    renderSelfEval();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function submitFinalEval(){
+  var data = collectEvalData();
+  // Check basic completeness
+  var unrated = EVAL_KPIS.filter(function(k){ return !data['self'+k.key]; });
+  if(unrated.length){
+    if(!confirm('You haven\'t rated yourself on: '+unrated.map(function(k){return k.label;}).join(', ')+'.\n\nSubmit anyway?')) return;
+  }
+  if(!confirm('Submit your self-evaluation to your manager? You can\'t change it after submitting.')) return;
+  showToast('📤 Submitting…');
+  try{
+    var payload = Object.assign({}, data, {name:CURR_USER.name, pin:CURR_PIN});
+    var r = await gas('submitSelfEval', payload);
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ Submitted! Your manager will review.');
+    CURRENT_EVAL = null;
+    await refreshMyData();
+    renderSelfEval();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function refreshMyData(){
+  try{
+    var r = await gas('getMyData', {name:CURR_USER.name, pin:CURR_PIN});
+    if(r.ok){ MY_DATA = r; }
+  }catch(e){}
+}
+
+function viewPastEval(id){
+  var e = (MY_DATA.evals||[]).find(function(x){ return x.id === id; });
+  if(!e) return;
+  var kpiTable = EVAL_KPIS.map(function(k){
+    var s = e['self'+k.key]||'—';
+    var a = e['admin'+k.key]||'—';
+    return '<tr><td style="padding:6px;font-size:12px;">'+k.icon+' '+k.label+'</td><td style="padding:6px;text-align:center;color:var(--teal);">'+s+'</td><td style="padding:6px;text-align:center;color:var(--gold);">'+a+'</td></tr>';
+  }).join('');
+  var html =
+    '<h3>📊 '+esc(e.period)+' Evaluation — '+esc(e.createdAt)+'</h3>'+
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:14px;">Status: '+esc(e.status)+(e.adminReviewDate?' · Reviewed: '+esc(e.adminReviewDate):'')+'</div>'+
+    '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;">'+
+      '<thead><tr style="background:var(--light);"><th style="padding:6px;text-align:left;">KPI</th><th style="padding:6px;">Self</th><th style="padding:6px;">Manager</th></tr></thead>'+
+      '<tbody>'+kpiTable+
+      '<tr style="background:var(--light);font-weight:700;"><td style="padding:6px;">Overall</td><td style="padding:6px;text-align:center;color:var(--teal);">'+(e.selfOverall||'—')+'</td><td style="padding:6px;text-align:center;color:var(--gold);">'+(e.adminOverall||'—')+'</td></tr>'+
+      '</tbody>'+
+    '</table>'+
+    (e.adminStrengths ? '<div style="background:rgba(58,125,92,.06);padding:10px;border-radius:8px;margin-bottom:8px;"><strong>🌟 Strengths:</strong> '+esc(e.adminStrengths)+'</div>' : '')+
+    (e.adminImprove ? '<div style="background:rgba(215,144,104,.06);padding:10px;border-radius:8px;margin-bottom:8px;"><strong>🎯 Areas to Improve:</strong> '+esc(e.adminImprove)+'</div>' : '')+
+    (e.adminActions ? '<div style="background:rgba(81,137,125,.06);padding:10px;border-radius:8px;margin-bottom:8px;"><strong>✅ Action Items:</strong> '+esc(e.adminActions)+'</div>' : '')+
+    (e.adminNotes ? '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;"><strong>📝 Manager Notes:</strong><br>'+esc(e.adminNotes)+'</div>' : '')+
+    '<div style="display:flex;justify-content:flex-end;margin-top:14px;">'+
+      '<button class="btn" onclick="closeViewEval()">Close</button>'+
+    '</div>';
+  showEvalView(html);
+}
+
+function showEvalView(html){
+  var modal = document.getElementById('eval-view-bg');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'eval-view-bg';
+    modal.className = 'pm-bg';
+    modal.onclick = function(ev){ if(ev.target === modal) closeViewEval(); };
+    modal.innerHTML = '<div class="pm" style="max-width:560px;max-height:90vh;overflow-y:auto;"><div class="pm-h"><span>📜 Evaluation</span><button onclick="closeViewEval()" style="background:rgba(255,255,255,.12);border:none;color:var(--cream);border-radius:6px;padding:4px 10px;cursor:pointer;">✕</button></div><div class="pm-b" id="eval-view-body"></div></div>';
+    document.body.appendChild(modal);
+  }
+  document.getElementById('eval-view-body').innerHTML = html;
+  modal.classList.add('open');
+}
+function closeViewEval(){ var m = document.getElementById('eval-view-bg'); if(m) m.classList.remove('open'); }
 
 function renderMyProfile(){
   var el = document.getElementById('s-profile-content');
@@ -1248,7 +1524,7 @@ function showAdminView(){
 }
 
 function aTab(id){
-  ['dash','logs','ot','leave','reports','emp','applicants','hol','set'].forEach(function(t){
+  ['dash','logs','ot','leave','reports','emp','applicants','reviews','hol','set'].forEach(function(t){
     var btn = document.getElementById('atab-'+t);
     var pnl = document.getElementById('apanel-'+t);
     if(btn) btn.classList.toggle('on',t===id);
@@ -1256,6 +1532,7 @@ function aTab(id){
   });
   if(id === 'logs') renderLogsList();
   if(id === 'applicants') renderApplicants();
+  if(id === 'reviews') loadReviews();
 }
 
 function renderAdminDash(){
@@ -1387,6 +1664,16 @@ async function refreshAdminData(){
     var r = await gas('getAdminData',{adminPin:ADMIN_PIN_STORED});
     if(r.ok){ ADMIN_DATA=r; renderAdminDash(); }
   }catch(e){ showToast('⚠ Refresh failed: '+e.message); }
+  // Refresh reviews badge count silently
+  try{
+    var rr = await gas('getAllEvals',{adminPin:ADMIN_PIN_STORED});
+    if(rr.ok){
+      ADMIN_EVALS = rr.evals || [];
+      var pending = ADMIN_EVALS.filter(function(e){ return e.status === 'submitted'; });
+      var b = document.getElementById('rev-badge');
+      if(b){ b.style.display = pending.length?'':'none'; b.textContent = pending.length; }
+    }
+  }catch(e){}
 }
 
 // ── REPORTS ──
@@ -1671,6 +1958,177 @@ async function deleteLogRow(logId){
 // ════════════════════════════════════════
 //  APPLICANTS — Public signup review queue
 // ════════════════════════════════════════
+// ── ADMIN REVIEWS — Performance Evaluation Management ──
+var ADMIN_EVALS = [];
+
+async function loadReviews(){
+  showToast('Loading evaluations…');
+  try{
+    var r = await gas('getAllEvals', {adminPin:ADMIN_PIN_STORED});
+    if(!r.ok) throw new Error(r.error);
+    ADMIN_EVALS = r.evals || [];
+  }catch(e){ showToast('❌ '+e.message); ADMIN_EVALS = []; }
+  renderReviews();
+}
+
+function renderReviews(){
+  var el = document.getElementById('reviews-list');
+  if(!el) return;
+
+  var filter = (document.getElementById('rev-filter')||{}).value || 'submitted';
+  var empFilter = (document.getElementById('rev-emp-filter')||{}).value || '';
+
+  // Populate employee filter
+  var empSel = document.getElementById('rev-emp-filter');
+  if(empSel){
+    var current = empSel.value;
+    var names = [...new Set(ADMIN_EVALS.map(function(e){ return e.employee; }))].sort();
+    empSel.innerHTML = '<option value="">All employees</option>' + names.map(function(n){ return '<option>'+esc(n)+'</option>'; }).join('');
+    empSel.value = current;
+  }
+
+  // Pending review badge on tab
+  var pending = ADMIN_EVALS.filter(function(e){ return e.status === 'submitted'; });
+  var b = document.getElementById('rev-badge');
+  if(b){ b.style.display = pending.length?'':'none'; b.textContent = pending.length; }
+
+  var list = ADMIN_EVALS.filter(function(e){
+    if(filter !== 'all' && e.status !== filter) return false;
+    if(empFilter && e.employee !== empFilter) return false;
+    return true;
+  });
+
+  if(!list.length){
+    el.innerHTML = '<div style="background:var(--white);border-radius:12px;padding:30px;text-align:center;color:var(--muted);font-size:13px;border:1px solid var(--border);">'+
+      (filter==='submitted' ? '✓ No evaluations awaiting review' : 'No evaluations match this filter') + '</div>';
+    return;
+  }
+
+  el.innerHTML = list.map(function(e){
+    var statusBadge = e.status === 'reviewed'
+      ? '<span style="background:rgba(58,125,92,.15);color:var(--success);padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;">✓ Reviewed</span>'
+      : e.status === 'submitted'
+      ? '<span style="background:rgba(215,144,104,.15);color:var(--gold);padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;">⏳ Awaiting Review</span>'
+      : '<span style="background:var(--light);color:var(--muted);padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;">📝 Draft</span>';
+    return '<div onclick="openReviewModal(\''+esc(e.id)+'\')" style="background:var(--white);border-radius:12px;padding:14px 16px;margin-bottom:10px;border:1px solid var(--border);cursor:pointer;transition:box-shadow .15s;" onmouseover="this.style.boxShadow=\'0 4px 14px rgba(0,0,0,.08)\'" onmouseout="this.style.boxShadow=\'none\'">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">'+
+        '<div style="flex:1;">'+
+          '<div style="font-size:14px;font-weight:700;color:var(--dark);">'+esc(e.employee)+' — '+esc(e.period)+'</div>'+
+          '<div style="font-size:11px;color:var(--muted);margin-top:3px;">Created: '+esc(e.createdAt)+(e.submittedAt?' · Submitted: '+esc(e.submittedAt):'')+(e.adminReviewDate?' · Reviewed: '+esc(e.adminReviewDate):'')+'</div>'+
+          '<div style="font-size:12px;margin-top:8px;color:var(--slate);">Self ⭐ <strong>'+(e.selfOverall||'—')+'</strong> / 5'+(e.adminOverall?' · Manager ⭐ <strong>'+e.adminOverall+'</strong> / 5':'')+'</div>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">'+
+          statusBadge+
+          (e.status==='submitted'?'<button class="btn btn-t btn-sm" onclick="event.stopPropagation();openReviewModal(\''+esc(e.id)+'\')">Review →</button>':'')+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+function openReviewModal(id){
+  var e = ADMIN_EVALS.find(function(x){ return x.id === id; });
+  if(!e) return;
+  // Build the side-by-side review form
+  var html =
+    '<h3 style="margin-bottom:6px;">⭐ Review Evaluation — '+esc(e.employee)+'</h3>'+
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:14px;">'+esc(e.period)+' · Submitted: '+esc(e.submittedAt||e.createdAt)+'</div>'+
+
+    '<div style="background:var(--light);padding:12px;border-radius:10px;margin-bottom:14px;">'+
+      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px;">📊 Rate the employee (1-5) — Self ratings shown for reference</div>'+
+      EVAL_KPIS.map(function(k){
+        var sv = e['self'+k.key] || '—';
+        var av = e['admin'+k.key] || '';
+        return '<div style="background:var(--white);border-radius:8px;padding:10px;margin-bottom:6px;">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'+
+            '<div><strong>'+k.icon+' '+k.label+'</strong></div>'+
+            '<div style="font-size:11px;color:var(--teal);">Self: <strong>'+sv+'</strong></div>'+
+          '</div>'+
+          '<div class="rating-row" data-key="admin'+k.key+'">'+
+            [1,2,3,4,5].map(function(n){
+              var labels = ['Needs Work','Below','Meets','Exceeds','Outstanding'];
+              var active = (parseInt(av) === n) ? ' active' : '';
+              return '<button type="button" class="rate-btn'+active+'" onclick="setAdminRating(\'admin'+k.key+'\','+n+',this)"><div class="rate-num">'+n+'</div><div class="rate-lbl">'+labels[n-1]+'</div></button>';
+            }).join('')+
+          '</div>'+
+        '</div>';
+      }).join('')+
+    '</div>'+
+
+    '<div style="background:rgba(58,125,92,.06);border-radius:10px;padding:12px;margin-bottom:10px;">'+
+      '<div style="font-size:11px;font-weight:700;color:var(--success);margin-bottom:8px;">🪞 EMPLOYEE\'S OWN REFLECTION</div>'+
+      (e.selfProudOf?'<div style="font-size:12px;margin-bottom:8px;"><strong>🏆 Proud of:</strong> '+esc(e.selfProudOf)+'</div>':'')+
+      (e.selfChallenge?'<div style="font-size:12px;margin-bottom:8px;"><strong>🌪 Challenge:</strong> '+esc(e.selfChallenge)+'</div>':'')+
+      (e.selfImprove?'<div style="font-size:12px;margin-bottom:8px;"><strong>🎯 Wants to improve:</strong> '+esc(e.selfImprove)+'</div>':'')+
+      (e.selfGoals?'<div style="font-size:12px;margin-bottom:8px;"><strong>🚀 Goals:</strong> '+esc(e.selfGoals)+'</div>':'')+
+      (e.selfSupportNeeded?'<div style="font-size:12px;"><strong>🤝 Support needed:</strong> '+esc(e.selfSupportNeeded)+'</div>':'')+
+    '</div>'+
+
+    '<h3 style="font-size:13px;font-weight:700;margin:14px 0 8px;">📝 Your Feedback</h3>'+
+    '<div class="fg" style="margin-bottom:10px;"><label class="fl">🌟 Strengths</label><textarea id="ad-strengths" class="ainput" rows="3" placeholder="What this employee does really well…">'+esc(e.adminStrengths||'')+'</textarea></div>'+
+    '<div class="fg" style="margin-bottom:10px;"><label class="fl">🎯 Areas to Improve</label><textarea id="ad-improve" class="ainput" rows="3" placeholder="Specific areas they should focus on…">'+esc(e.adminImprove||'')+'</textarea></div>'+
+    '<div class="fg" style="margin-bottom:10px;"><label class="fl">✅ Action Items</label><textarea id="ad-actions" class="ainput" rows="3" placeholder="Concrete steps for the next period (training, projects, milestones)…">'+esc(e.adminActions||'')+'</textarea></div>'+
+    '<div class="fg" style="margin-bottom:10px;"><label class="fl">📝 General Notes</label><textarea id="ad-notes" class="ainput" rows="3" placeholder="Additional context, anything else worth recording…">'+esc(e.adminNotes||'')+'</textarea></div>'+
+    '<div class="fg" style="margin-bottom:14px;"><label class="fl">Reviewer Name</label><input id="ad-reviewer" class="ainput" value="'+esc(e.adminReviewer||'')+'" placeholder="Your name"></div>'+
+
+    '<div style="display:flex;gap:8px;justify-content:flex-end;padding-top:14px;border-top:1px solid var(--border);">'+
+      '<button class="btn" onclick="closeReviewModal()">Cancel</button>'+
+      '<button class="btn btn-d btn-sm" onclick="deleteEvaluation(\''+esc(e.id)+'\')" style="margin-right:auto;">🗑 Delete</button>'+
+      '<button class="btn btn-t" onclick="submitReviewModal(\''+esc(e.id)+'\')">'+(e.status==='reviewed'?'💾 Update Review':'✅ Save Review')+'</button>'+
+    '</div>';
+
+  document.getElementById('review-body').innerHTML = html;
+  document.getElementById('review-bg').classList.add('open');
+}
+
+function closeReviewModal(){
+  document.getElementById('review-bg').classList.remove('open');
+}
+
+function setAdminRating(field, value, btn){
+  // Store on the button's parent dataset, picked up at submit
+  var row = btn.parentElement;
+  row.querySelectorAll('.rate-btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  row.dataset.value = value;
+}
+
+async function submitReviewModal(id){
+  var payload = { id:id, adminPin:ADMIN_PIN_STORED };
+  EVAL_KPIS.forEach(function(k){
+    var row = document.querySelector('[data-key="admin'+k.key+'"]');
+    if(row && row.dataset.value) payload['admin'+k.key] = row.dataset.value;
+  });
+  payload.adminStrengths = document.getElementById('ad-strengths').value || '';
+  payload.adminImprove   = document.getElementById('ad-improve').value || '';
+  payload.adminActions   = document.getElementById('ad-actions').value || '';
+  payload.adminNotes     = document.getElementById('ad-notes').value || '';
+  payload.adminReviewer  = document.getElementById('ad-reviewer').value || 'Admin';
+
+  showToast('Saving review…');
+  try{
+    var r = await gas('submitAdminEval', payload);
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ '+r.message);
+    closeReviewModal();
+    await loadReviews();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function deleteEvaluation(id){
+  if(!confirm('Permanently delete this evaluation?')) return;
+  try{
+    var r = await gas('deleteEval', {adminPin:ADMIN_PIN_STORED, id:id});
+    if(!r.ok) throw new Error(r.error);
+    showToast('🗑 Evaluation deleted');
+    closeReviewModal();
+    await loadReviews();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+// KPI definitions shared with admin (mirrors the staff-side EVAL_KPIS)
+// Defined globally above renderSelfEval
+
 function renderApplicants(){
   var el = document.getElementById('applicants-list');
   if(!el) return;
