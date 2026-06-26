@@ -222,7 +222,7 @@ button:disabled{opacity:.5;cursor:default;}
       <div class="role" id="s-role">—</div>
     </div>
     <div style="text-align:center;">
-      <div class="live-clock"><div class="time" id="s-clock">—</div><div class="date" id="s-date">—</div></div>
+      <div class="live-clock"><div class="time" id="s-clock">—</div><div class="date" id="s-date">—</div><div style="font-size:9px;font-weight:600;color:rgba(215,144,104,.65);letter-spacing:1.5px;margin-top:2px;">PHT · MANILA</div></div>
     </div>
     <button class="logout-btn" onclick="doLogout()">← Out</button>
   </div>
@@ -1683,12 +1683,10 @@ function populateReportEmpSelect(){
   var staff = (ADMIN_DATA.staff||[]).filter(function(s){ return s.status!=='inactive'; });
   sel.innerHTML = '<option value="">All Employees</option>'+
     staff.map(function(s){ return '<option value="'+s.name+'">'+s.name+'</option>'; }).join('');
-  // Set default date range (current month)
-  var now = new Date();
-  var y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
+  // Set default date range (current PHT month)
   var from = document.getElementById('r-from'), to = document.getElementById('r-to');
-  if(from) from.value = y+'-'+m+'-01';
-  if(to) to.value = y+'-'+m+'-'+ String(new Date(y,now.getMonth()+1,0).getDate()).padStart(2,'0');
+  if(from) from.value = monthStartPHT();
+  if(to) to.value = monthEndPHT();
 }
 
 async function generateReport(){
@@ -1772,13 +1770,11 @@ function populateLogsEmpFilter(){
   sel.innerHTML = '<option value="">All employees</option>' +
     staff.map(function(s){ return '<option value="'+esc(s.name)+'">'+esc(s.name)+'</option>'; }).join('');
   sel.value = current;
-  // Default date range — current month if empty
+  // Default date range — current PHT month if empty
   var df = document.getElementById('logs-date-from'), dt = document.getElementById('logs-date-to');
   if(df && !df.value){
-    var now = new Date();
-    var y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
-    df.value = y+'-'+m+'-01';
-    dt.value = y+'-'+m+'-'+String(new Date(y, now.getMonth()+1, 0).getDate()).padStart(2,'0');
+    df.value = monthStartPHT();
+    dt.value = monthEndPHT();
   }
 }
 
@@ -3078,9 +3074,83 @@ async function saveBonusModal(){
   }catch(e){ showToast('❌ '+e.message); }
 }
 // ════════════════════════════════════════
-//  UTILS
+//  UTILS — PHT TIMEZONE HELPERS
 // ════════════════════════════════════════
-function todayPHT(){ return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'}); }
+// ALL date/time functions in TimeCommand MUST return values in
+// Asia/Manila (PHT, UTC+8) regardless of where the user's browser is.
+// Don't use raw `new Date()` for display or default values —
+// use these helpers instead.
+
+var TC_TZ = 'Asia/Manila';
+
+// Get an object with PHT-anchored year/month/day/hour/minute/second
+function nowPHT(){
+  var p = new Date().toLocaleString('en-CA', {
+    timeZone: TC_TZ, hour12: false,
+    year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit'
+  });
+  // en-CA gives "2026-06-26, 14:35:12" → parse safely
+  var m = p.match(/(\d{4})-(\d{2})-(\d{2}),?\s+(\d{2}):(\d{2}):(\d{2})/);
+  if(!m){
+    // Fallback for browsers that format differently
+    return { year: new Date().getFullYear(), month: new Date().getMonth()+1, day: new Date().getDate(),
+             hour: new Date().getHours(), minute: new Date().getMinutes(), second: new Date().getSeconds() };
+  }
+  return {
+    year:   parseInt(m[1],10),
+    month:  parseInt(m[2],10),
+    day:    parseInt(m[3],10),
+    hour:   parseInt(m[4],10),
+    minute: parseInt(m[5],10),
+    second: parseInt(m[6],10)
+  };
+}
+
+function todayPHT(){ return new Date().toLocaleDateString('en-CA',{timeZone:TC_TZ}); }
+
+// First day of the current PHT month — returns 'YYYY-MM-01'
+function monthStartPHT(){
+  var p = nowPHT();
+  return p.year + '-' + String(p.month).padStart(2,'0') + '-01';
+}
+
+// Last day of the current PHT month — returns 'YYYY-MM-DD'
+function monthEndPHT(){
+  var p = nowPHT();
+  // Day 0 of next month = last day of this month
+  var lastDay = new Date(p.year, p.month, 0).getDate();
+  return p.year + '-' + String(p.month).padStart(2,'0') + '-' + String(lastDay).padStart(2,'0');
+}
+
+// Current PHT date in YYYY-MM-DD
+function dateStrPHT(){ return todayPHT(); }
+
+// Current PHT time in HH:MM (24h) or "h:MM AM/PM" if 12hr=true
+function timeStrPHT(hr12){
+  var opts = {timeZone:TC_TZ, hour:'2-digit', minute:'2-digit'};
+  if(hr12){ opts.hour12 = true; }
+  else { opts.hourCycle = 'h23'; }
+  return new Date().toLocaleTimeString('en-PH', opts);
+}
+
+// Format any Date/dateString in PHT
+function fmtPHT(d, fmt){
+  if(!d) return '';
+  var date = (d instanceof Date) ? d : new Date(d);
+  if(isNaN(date.getTime())) return String(d);
+  var opts;
+  switch(fmt){
+    case 'date':    opts = {timeZone:TC_TZ, year:'numeric', month:'short', day:'numeric'}; break;
+    case 'full':    opts = {timeZone:TC_TZ, weekday:'short', year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', hour12:true}; break;
+    case 'datetime':opts = {timeZone:TC_TZ, year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', hour12:true}; break;
+    case 'iso':     return date.toLocaleDateString('en-CA', {timeZone:TC_TZ});
+    case 'time':
+    default:        opts = {timeZone:TC_TZ, hour:'2-digit', minute:'2-digit', hour12:true};
+  }
+  return date.toLocaleString('en-PH', opts);
+}
+
 function resetTracker(){
   if(!confirm('Reset all saved settings (GAS URL, admin PIN)? You will need to re-enter them.')) return;
   localStorage.removeItem('tc_gas_url');
@@ -3102,7 +3172,7 @@ function showToast(msg){
 // ════════════════════════════════════════
 // Set default date in leave form
 (function(){
-  var today = new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'});
+  var today = todayPHT();
   var lf = document.getElementById('lv-from'), lt = document.getElementById('lv-to');
   if(lf) lf.value = today;
   if(lt) lt.value = today;
