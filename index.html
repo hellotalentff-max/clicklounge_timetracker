@@ -251,9 +251,85 @@ button:disabled{opacity:.5;cursor:default;}
       <div class="leave-card el"><div class="leave-v" id="s-el">—</div><div class="leave-l">Emergency</div></div>
     </div>
 
+    <!-- ── TASK SESSION TIMER ──────────────────────────────────────
+         Independent stopwatch for measuring task duration. Doesn't
+         affect clock in/out or shift hours — pure productivity tool. -->
+    <div id="task-timer-card" class="form-card" style="background:linear-gradient(135deg,var(--white) 0%,#fcfdfc 100%);border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:700;">⏱ Task Timer</div>
+          <div id="task-timer-state" style="font-size:14px;font-weight:700;color:var(--slate);margin-top:2px;">No task running</div>
+        </div>
+        <div id="task-timer-display" style="font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--gold);font-family:'Inter','SF Mono',monospace;">00:00:00</div>
+      </div>
+
+      <!-- Start state: task picker + start button -->
+      <div id="task-start-area">
+        <div style="display:flex;gap:6px;align-items:stretch;">
+          <select id="task-name-input"
+            style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;background:var(--white);color:var(--text);"
+            onchange="_toggleTaskDetail()">
+            <option value="">— Select task to track —</option>
+            <optgroup label="🎨 Editing & Production">
+              <option value="Photo Editing">Photo Editing</option>
+              <option value="Video Editing">Video Editing</option>
+              <option value="File Organization">File Organization</option>
+              <option value="Backup & Upload">Backup &amp; Upload</option>
+            </optgroup>
+            <optgroup label="📸 Self-Shoot Sessions">
+              <option value="Snapshot Selfie">Snapshot Selfie</option>
+              <option value="Tribe Time">Tribe Time</option>
+              <option value="Crowd Cam">Crowd Cam</option>
+              <option value="Crew Captures">Crew Captures</option>
+              <option value="Frenzy Snaps Birthday">Frenzy Snaps Birthday</option>
+              <option value="Party Clicks Birthday">Party Clicks Birthday</option>
+              <option value="Click Capture Birthday">Click Capture Birthday</option>
+            </optgroup>
+            <optgroup label="📷 Photographer">
+              <option value="Photographer Session">Photographer Session</option>
+              <option value="Studio Rental">Studio Rental</option>
+            </optgroup>
+            <optgroup label="🎉 Events & Rentals">
+              <option value="Event Booking">Event Booking</option>
+              <option value="Booth Rental">Booth Rental</option>
+            </optgroup>
+            <optgroup label="🛠 Studio Operations">
+              <option value="Client Communication">Client Communication</option>
+              <option value="Booking Management">Booking Management</option>
+              <option value="Equipment Maintenance">Equipment Maintenance</option>
+              <option value="Cleaning & Setup">Cleaning &amp; Setup</option>
+              <option value="Inventory Check">Inventory Check</option>
+              <option value="Marketing & Social Media">Marketing &amp; Social Media</option>
+              <option value="Admin Tasks">Admin Tasks</option>
+              <option value="Other">Other (specify below)</option>
+            </optgroup>
+          </select>
+          <button class="btn btn-t" onclick="startTaskSession()" style="padding:9px 16px;font-size:12px;white-space:nowrap;">▶ Start</button>
+        </div>
+        <input type="text" id="task-name-detail" placeholder="Optional: add detail (e.g., client name, batch #, specific item)"
+          style="display:none;width:100%;margin-top:6px;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:12px;background:var(--white);color:var(--text);"
+          onkeypress="if(event.key==='Enter') startTaskSession()">
+        <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.4;">Track time spent on individual tasks — separate from clock in/out.</div>
+      </div>
+
+      <!-- Running state: task name + stop button -->
+      <div id="task-running-area" style="display:none;">
+        <div style="background:rgba(218,175,52,.08);border:1px solid rgba(218,175,52,.3);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;">Currently working on</div>
+          <div id="task-current-name" style="font-size:14px;font-weight:700;color:var(--slate);margin-top:2px;word-break:break-word;"></div>
+          <div id="task-started-at" style="font-size:10px;color:var(--muted);margin-top:2px;"></div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-outline" onclick="cancelTaskSession()" style="flex:1;font-size:11px;">✕ Cancel</button>
+          <button class="btn btn-gold" onclick="stopTaskSession()" style="flex:2;font-size:12px;font-weight:700;">⏹ Stop & Save</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Tabs -->
     <div class="staff-tabs">
       <button class="stab on" onclick="sTab('records')" id="stab-records">📋 My Records</button>
+      <button class="stab" onclick="sTab('tasks')" id="stab-tasks">⏱ My Tasks</button>
       <button class="stab" onclick="sTab('leave')" id="stab-leave">📅 Leave</button>
       <button class="stab" onclick="sTab('eval')" id="stab-eval">⭐ Self-Eval</button>
       <button class="stab" onclick="sTab('profile')" id="stab-profile">👤 My Profile</button>
@@ -262,6 +338,19 @@ button:disabled{opacity:.5;cursor:default;}
     <!-- My Records Tab -->
     <div id="stab-panel-records">
       <div id="s-records-wrap"><p style="color:var(--muted);font-size:12px;text-align:center;padding:20px;">Loading records…</p></div>
+    </div>
+
+    <!-- My Tasks Tab -->
+    <div id="stab-panel-tasks" style="display:none;">
+      <div class="form-card" style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div style="font-size:13px;font-weight:700;color:var(--slate);">Today's Task Sessions</div>
+          <div style="font-size:11px;color:var(--muted);" id="task-day-total">0 min total</div>
+        </div>
+        <div id="task-session-list">
+          <div style="text-align:center;padding:24px 0;font-size:11px;color:var(--muted);">No task sessions logged today. Start one above ↑</div>
+        </div>
+      </div>
     </div>
 
     <!-- Leave Tab -->
@@ -304,13 +393,11 @@ button:disabled{opacity:.5;cursor:default;}
   <div class="admin-tabs">
     <button class="atab on" onclick="aTab('dash')" id="atab-dash">📊 Dashboard</button>
     <button class="atab" onclick="aTab('logs')" id="atab-logs">🕐 Time Logs</button>
-    <button class="atab" onclick="aTab('ot')" id="atab-ot">⚠ OT <span class="badge-n" id="ot-badge" style="display:none">0</span></button>
-    <button class="atab" onclick="aTab('leave')" id="atab-leave">📅 Leave <span class="badge-n" id="lv-badge" style="display:none">0</span></button>
+    <button class="atab" onclick="aTab('requests')" id="atab-requests">📋 Requests <span class="badge-n" id="req-badge" style="display:none">0</span></button>
     <button class="atab" onclick="aTab('reports')" id="atab-reports">📄 Reports</button>
+    <button class="atab" onclick="aTab('perf')" id="atab-perf">📊 Performance</button>
     <button class="atab" onclick="aTab('emp')" id="atab-emp">👥 Employees</button>
     <button class="atab" onclick="aTab('applicants')" id="atab-applicants">📝 Applicants <span class="badge-n" id="app-badge" style="display:none">0</span></button>
-    <button class="atab" onclick="aTab('reviews')" id="atab-reviews">⭐ Reviews <span class="badge-n" id="rev-badge" style="display:none">0</span></button>
-    <button class="atab" onclick="aTab('hol')" id="atab-hol">🏖 Holidays</button>
     <button class="atab" onclick="aTab('set')" id="atab-set">⚙ Settings</button>
   </div>
 
@@ -337,15 +424,35 @@ button:disabled{opacity:.5;cursor:default;}
     </div>
 
     <!-- OT APPROVALS -->
-    <div id="apanel-ot" style="display:none;">
-      <div style="font-size:13px;font-weight:700;margin-bottom:12px;">⚠ Overtime Approval Queue</div>
-      <div id="a-ot-list"></div>
-    </div>
-
-    <!-- LEAVE APPROVALS -->
-    <div id="apanel-leave" style="display:none;">
-      <div style="font-size:13px;font-weight:700;margin-bottom:12px;">📅 Leave Requests</div>
-      <div id="a-leave-list"></div>
+    <!-- ════ REQUESTS — OT + Leave + Holidays combined ════ -->
+    <div id="apanel-requests" style="display:none;">
+      <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:2px solid var(--border);padding-bottom:8px;">
+        <button class="btn btn-sm" id="req-sub-ot" onclick="reqSub('ot')" style="font-size:11px;">⚠ OT Requests</button>
+        <button class="btn btn-sm" id="req-sub-leave" onclick="reqSub('leave')" style="font-size:11px;">📅 Leave Requests</button>
+        <button class="btn btn-sm" id="req-sub-hol" onclick="reqSub('hol')" style="font-size:11px;">🏖 Holidays</button>
+      </div>
+      <div id="req-panel-ot">
+        <div style="font-size:13px;font-weight:700;margin-bottom:12px;">⚠ Overtime Approval Queue</div>
+        <div id="a-ot-list"></div>
+      </div>
+      <div id="req-panel-leave" style="display:none;">
+        <div style="font-size:13px;font-weight:700;margin-bottom:12px;">📅 Leave Requests</div>
+        <div id="a-leave-list"></div>
+      </div>
+      <div id="req-panel-hol" style="display:none;">
+        <div class="aform">
+          <div class="aform-title">🏖 Flag a Holiday</div>
+          <div class="aform-grid">
+            <div class="fg"><label class="fl">Date</label><input class="fi" type="date" id="h-date"></div>
+            <div class="fg"><label class="fl">Holiday Name</label><input class="fi" id="h-name" placeholder="e.g. Rizal Day"></div>
+            <div class="fg"><label class="fl">Type</label>
+              <select class="fi" id="h-type"><option value="regular">Regular (200%)</option><option value="special">Special Non-Working (130%)</option></select>
+            </div>
+          </div>
+          <button class="btn btn-t" style="margin-top:8px;" onclick="addHoliday()">Flag Holiday</button>
+        </div>
+        <div id="hol-list"></div>
+      </div>
     </div>
 
     <!-- REPORTS -->
@@ -372,6 +479,51 @@ button:disabled{opacity:.5;cursor:default;}
         </div>
       </div>
       <div id="a-report-output"></div>
+    </div>
+
+    <!-- ════ PERFORMANCE REPORT — Merged attendance + tasks + evals ════ -->
+    <div id="apanel-perf" style="display:none;">
+      <div class="aform">
+        <div class="aform-title">📊 Employee Performance</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
+          Fully auto-computed from TimeLogs, Task Timer sessions, and Tasks Manager. No manual entry — all data pulled from existing systems.
+        </div>
+        <div class="aform-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;">
+          <div class="fg"><label class="fl">Employee</label><select class="fi" id="perf-emp"></select></div>
+          <div class="fg"><label class="fl">From Date</label><input class="fi" type="date" id="perf-from"></div>
+          <div class="fg"><label class="fl">To Date</label><input class="fi" type="date" id="perf-to"></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;">
+          <button class="btn btn-outline btn-sm" onclick="perfPreset('week')">This Week</button>
+          <button class="btn btn-outline btn-sm" onclick="perfPreset('month')">This Month</button>
+          <button class="btn btn-outline btn-sm" onclick="perfPreset('quarter')">Last 90 Days</button>
+          <button class="btn btn-t" onclick="perfGenerate()">📊 Generate Report</button>
+        </div>
+      </div>
+
+      <div id="perf-output"></div>
+
+      <!-- Reviews section (inside Performance tab) -->
+      <div class="aform" style="margin-top:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div>
+            <div class="aform-title" style="margin-bottom:2px;">⭐ Staff Evaluations</div>
+            <div style="font-size:11px;color:var(--muted);">Self-evaluations submitted by employees. Review and add feedback here.</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <select id="rev-filter" class="ainput" onchange="renderReviews()" style="max-width:200px;">
+            <option value="all">All evaluations</option>
+            <option value="submitted" selected>⏳ Pending review</option>
+            <option value="reviewed">✓ Reviewed</option>
+            <option value="draft">📝 Draft only</option>
+          </select>
+          <select id="rev-emp-filter" class="ainput" onchange="renderReviews()" style="max-width:200px;">
+            <option value="">All employees</option>
+          </select>
+        </div>
+        <div id="reviews-list"></div>
+      </div>
     </div>
 
     <!-- EMPLOYEES -->
@@ -404,41 +556,6 @@ button:disabled{opacity:.5;cursor:default;}
     </div>
 
     <!-- REVIEWS -->
-    <div id="apanel-reviews" style="display:none;">
-      <div style="background:rgba(81,137,125,.08);border:1.5px solid rgba(81,137,125,.2);border-radius:12px;padding:14px 16px;margin-bottom:14px;">
-        <div style="font-size:13px;font-weight:700;margin-bottom:4px;">⭐ Performance Evaluations</div>
-        <div style="font-size:11px;color:var(--muted);">Employees fill out self-evaluations from their TimeCommand. Review here and add your feedback.</div>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-        <select id="rev-filter" class="ainput" onchange="renderReviews()" style="max-width:200px;">
-          <option value="all">All evaluations</option>
-          <option value="submitted" selected>⏳ Pending review</option>
-          <option value="reviewed">✓ Reviewed</option>
-          <option value="draft">📝 Draft only</option>
-        </select>
-        <select id="rev-emp-filter" class="ainput" onchange="renderReviews()" style="max-width:200px;">
-          <option value="">All employees</option>
-        </select>
-      </div>
-      <div id="reviews-list"></div>
-    </div>
-
-    <!-- HOLIDAYS -->
-    <div id="apanel-hol" style="display:none;">
-      <div class="aform">
-        <div class="aform-title">🏖 Flag a Holiday</div>
-        <div class="aform-grid">
-          <div class="fg"><label class="fl">Date</label><input class="fi" type="date" id="h-date"></div>
-          <div class="fg"><label class="fl">Holiday Name</label><input class="fi" id="h-name" placeholder="e.g. Rizal Day"></div>
-          <div class="fg"><label class="fl">Type</label>
-            <select class="fi" id="h-type"><option value="regular">Regular (200%)</option><option value="special">Special Non-Working (130%)</option></select>
-          </div>
-        </div>
-        <button class="btn btn-t" style="margin-top:8px;" onclick="addHoliday()">Flag Holiday</button>
-      </div>
-      <div id="hol-list"></div>
-    </div>
-
     <!-- SETTINGS -->
     <div id="apanel-set" style="display:none;">
       <div class="aform" style="border:2px solid var(--gold);background:rgba(215,144,104,.04);">
@@ -467,6 +584,19 @@ button:disabled{opacity:.5;cursor:default;}
         <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
           <button class="btn btn-t" onclick="runInitSheets()">🗄 Initialize Time Tracker Sheets</button>
           <span id="init-result" style="font-size:11px;color:var(--muted);"></span>
+        </div>
+      </div>
+      <div class="aform">
+        <div class="aform-title">🔗 Tasks Manager Integration</div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.6;">
+          Paste the <strong>Tasks Manager GAS deployment URL</strong> (the backend, not the frontend at clicklounge_tasks). KPI Tracker will pull <em>tasks completed on time</em> and <em>turnaround days</em> from this source.
+        </p>
+        <div class="fg"><label class="fl">Tasks Manager GAS URL (optional)</label>
+          <input class="fi" id="tasks-mgr-url" placeholder="https://script.google.com/macros/s/…/exec">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-t" onclick="saveTasksMgrUrl()">💾 Save Tasks Manager URL</button>
+          <span id="tasks-mgr-result" style="font-size:11px;"></span>
         </div>
       </div>
       <div class="aform">
@@ -1081,7 +1211,7 @@ function renderLeaveHistory(){
 }
 
 function sTab(id){
-  ['records','leave','eval','profile'].forEach(function(t){
+  ['records','tasks','leave','eval','profile'].forEach(function(t){
     var btn = document.getElementById('stab-'+t);
     var pnl = document.getElementById('stab-panel-'+t);
     if(btn) btn.classList.toggle('on',t===id);
@@ -1089,6 +1219,7 @@ function sTab(id){
   });
   if(id === 'profile') renderMyProfile();
   if(id === 'eval') renderSelfEval();
+  if(id === 'tasks') loadTaskSessions();
 }
 
 // ── KPI definitions used by evaluation form ──
@@ -1517,6 +1648,7 @@ async function submitLeave(){
 function showAdminView(){
   showView('admin-view');
   try { document.getElementById('gas-url-input').value = GAS_URL || ''; } catch(e){}
+  try { document.getElementById('tasks-mgr-url').value = TASKS_MGR_URL || ''; } catch(e){}
   try { renderAdminDash(); } catch(e){ console.error('renderAdminDash:', e); }
   try { populateReportEmpSelect(); } catch(e){ console.error('populateReportEmpSelect:', e); }
   try { renderEmpList(); } catch(e){ console.error('renderEmpList:', e); }
@@ -1524,7 +1656,7 @@ function showAdminView(){
 }
 
 function aTab(id){
-  ['dash','logs','ot','leave','reports','emp','applicants','reviews','hol','set'].forEach(function(t){
+  ['dash','logs','requests','reports','perf','emp','applicants','set'].forEach(function(t){
     var btn = document.getElementById('atab-'+t);
     var pnl = document.getElementById('apanel-'+t);
     if(btn) btn.classList.toggle('on',t===id);
@@ -1532,7 +1664,22 @@ function aTab(id){
   });
   if(id === 'logs') renderLogsList();
   if(id === 'applicants') renderApplicants();
-  if(id === 'reviews') loadReviews();
+  if(id === 'perf'){ perfInit(); loadReviews(); }
+  if(id === 'requests') reqSub('ot');
+}
+
+// Sub-tabs inside the Requests panel (OT / Leave / Holidays)
+function reqSub(sub){
+  ['ot','leave','hol'].forEach(function(s){
+    var pnl = document.getElementById('req-panel-'+s);
+    var btn = document.getElementById('req-sub-'+s);
+    if(pnl) pnl.style.display = s===sub ? '' : 'none';
+    if(btn){
+      btn.style.background = s===sub ? 'var(--slate)' : '';
+      btn.style.color = s===sub ? '#fff' : '';
+    }
+  });
+  if(sub === 'hol') renderHolidayList();
 }
 
 function renderAdminDash(){
@@ -1546,11 +1693,10 @@ function renderAdminDash(){
 
   // Badge counts
   var pendApp = (d.staff||[]).filter(function(s){ return s.status==='pending'; }).length;
-  var otB = document.getElementById('ot-badge');
-  var lvB = document.getElementById('lv-badge');
+  var reqB = document.getElementById('req-badge');
   var apB = document.getElementById('app-badge');
-  if(otB){ otB.style.display = pendOT?'':'none'; otB.textContent=pendOT; }
-  if(lvB){ lvB.style.display = pendLv?'':'none'; lvB.textContent=pendLv; }
+  var totalReq = pendOT + pendLv;
+  if(reqB){ reqB.style.display = totalReq?'':'none'; reqB.textContent=totalReq; }
   if(apB){ apB.style.display = pendApp?'':'none'; apB.textContent=pendApp; }
 
   document.getElementById('a-kpis').innerHTML=[
@@ -3165,6 +3311,456 @@ function showToast(msg){
   t.classList.add('show');
   clearTimeout(t._tm);
   t._tm = setTimeout(function(){ t.classList.remove('show'); }, 3500);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  ⏱ TASK SESSION TIMER — Measure time per task
+// ════════════════════════════════════════════════════════════════
+//  Pure stopwatch separate from clock in/out. Staff start a session
+//  with a task name, work, then stop. Duration is saved to a
+//  TaskSessions sheet for productivity analysis.
+// ════════════════════════════════════════════════════════════════
+
+var _taskSession = null;     // {name, startTime (epoch ms), startedDisplay}
+var _taskTickInt = null;
+
+// Show/hide the optional detail input when "Other" is selected
+function _toggleTaskDetail(){
+  var sel = document.getElementById('task-name-input');
+  var detail = document.getElementById('task-name-detail');
+  if(sel.value === 'Other'){
+    detail.style.display = '';
+    detail.focus();
+  } else if(sel.value){
+    // Show the detail box even for known tasks (optional context)
+    detail.style.display = '';
+    detail.placeholder = 'Optional: add detail (e.g., client name, batch #)';
+  } else {
+    detail.style.display = 'none';
+    detail.value = '';
+  }
+}
+
+function startTaskSession(){
+  var sel = document.getElementById('task-name-input');
+  var detailEl = document.getElementById('task-name-detail');
+  var base = (sel.value || '').trim();
+  var detail = (detailEl.value || '').trim();
+
+  if(!base){ showToast('⚠ Pick a task from the dropdown'); return; }
+  if(base === 'Other' && !detail){ showToast('⚠ Add a detail for "Other" tasks'); detailEl.focus(); return; }
+  if(!CURR_USER || !CURR_USER.name){ showToast('⚠ Log in first'); return; }
+
+  // Compose final task name: "Photo Editing — June 22 batch" or just "Photo Editing"
+  var taskName = (base === 'Other' ? detail : (detail ? base + ' — ' + detail : base));
+
+  _taskSession = {
+    name: taskName,
+    startTime: Date.now(),
+    startedDisplay: timeStrPHT(true)
+  };
+
+  // Switch UI to running state
+  document.getElementById('task-start-area').style.display = 'none';
+  document.getElementById('task-running-area').style.display = '';
+  document.getElementById('task-current-name').textContent = taskName;
+  document.getElementById('task-started-at').textContent = 'Started at ' + _taskSession.startedDisplay;
+  document.getElementById('task-timer-state').textContent = '⏱ Task running';
+  document.getElementById('task-timer-state').style.color = 'var(--gold)';
+
+  // Start the live timer
+  _tickTaskTimer();
+  if(_taskTickInt) clearInterval(_taskTickInt);
+  _taskTickInt = setInterval(_tickTaskTimer, 1000);
+
+  // Reset inputs for next task
+  sel.value = '';
+  detailEl.value = '';
+  detailEl.style.display = 'none';
+  showToast('⏱ Task started');
+}
+
+function _tickTaskTimer(){
+  if(!_taskSession){ return; }
+  var elapsedMs = Date.now() - _taskSession.startTime;
+  var totalSec = Math.floor(elapsedMs / 1000);
+  var h = Math.floor(totalSec / 3600);
+  var m = Math.floor((totalSec % 3600) / 60);
+  var s = totalSec % 60;
+  var pad = function(n){ return String(n).padStart(2,'0'); };
+  document.getElementById('task-timer-display').textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
+}
+
+function cancelTaskSession(){
+  if(!_taskSession) return;
+  if(!confirm('Cancel this task session? Time won\'t be saved.')) return;
+  _resetTaskTimerUI();
+  showToast('Task cancelled');
+}
+
+async function stopTaskSession(){
+  if(!_taskSession){ return; }
+  var endTime = Date.now();
+  var durationMs = endTime - _taskSession.startTime;
+  var durationMin = Math.round(durationMs / 60000 * 100) / 100; // 2dp precision
+  var session = {
+    employee: CURR_USER.name,
+    task: _taskSession.name,
+    startedAt: _taskSession.startedDisplay,
+    endedAt: timeStrPHT(true),
+    date: todayPHT(),
+    durationMin: durationMin,
+    durationDisplay: _formatDuration(durationMs)
+  };
+
+  showToast('💾 Saving task session…');
+  try{
+    var r = await gas('saveTaskSession', session);
+    if(!r.ok) throw new Error(r.error || 'Save failed');
+    showToast('✅ ' + session.durationDisplay + ' on "' + session.task + '"');
+    _resetTaskTimerUI();
+    // Reload list if the Tasks tab is active
+    if(document.getElementById('stab-panel-tasks').style.display !== 'none'){
+      loadTaskSessions();
+    }
+  }catch(e){
+    showToast('❌ ' + e.message);
+    // Keep timer running so they can retry stopping
+  }
+}
+
+function _resetTaskTimerUI(){
+  _taskSession = null;
+  if(_taskTickInt){ clearInterval(_taskTickInt); _taskTickInt = null; }
+  document.getElementById('task-start-area').style.display = '';
+  document.getElementById('task-running-area').style.display = 'none';
+  document.getElementById('task-timer-display').textContent = '00:00:00';
+  document.getElementById('task-timer-state').textContent = 'No task running';
+  document.getElementById('task-timer-state').style.color = 'var(--slate)';
+}
+
+function _formatDuration(ms){
+  var min = Math.floor(ms / 60000);
+  if(min < 1) return Math.round(ms / 1000) + ' sec';
+  if(min < 60) return min + ' min';
+  var h = Math.floor(min / 60);
+  var m = min % 60;
+  return h + 'h ' + (m > 0 ? m + 'm' : '');
+}
+
+async function loadTaskSessions(){
+  var listEl = document.getElementById('task-session-list');
+  var totalEl = document.getElementById('task-day-total');
+  if(!CURR_USER || !CURR_USER.name){
+    listEl.innerHTML = '<div style="text-align:center;padding:20px;font-size:11px;color:var(--muted);">Log in to view tasks.</div>';
+    return;
+  }
+  listEl.innerHTML = '<div style="text-align:center;padding:16px;font-size:11px;color:var(--muted);">Loading…</div>';
+  try{
+    var r = await gas('getTaskSessions', { employee: CURR_USER.name, date: todayPHT() });
+    if(!r.ok) throw new Error(r.error || 'Failed');
+    var sessions = r.sessions || [];
+    if(!sessions.length){
+      listEl.innerHTML = '<div style="text-align:center;padding:24px 0;font-size:11px;color:var(--muted);">No task sessions logged today. Start one above ↑</div>';
+      totalEl.textContent = '0 min total';
+      return;
+    }
+    var totalMin = 0;
+    sessions.forEach(function(s){ totalMin += parseFloat(s.durationMin) || 0; });
+    totalEl.innerHTML = '<strong style="color:var(--gold);">' + _formatDuration(totalMin * 60000) + '</strong> total · ' + sessions.length + ' session' + (sessions.length !== 1 ? 's' : '');
+
+    listEl.innerHTML = sessions.map(function(s){
+      var dispDur = _formatDuration((parseFloat(s.durationMin) || 0) * 60000);
+      return '<div style="padding:11px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;">' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-size:13px;font-weight:600;color:var(--slate);word-break:break-word;">' + esc(s.task) + '</div>' +
+          '<div style="font-size:10px;color:var(--muted);margin-top:2px;">' + esc(s.startedAt) + ' → ' + esc(s.endedAt) + '</div>' +
+        '</div>' +
+        '<div style="text-align:right;font-weight:700;color:var(--gold);font-size:13px;white-space:nowrap;font-variant-numeric:tabular-nums;">' + dispDur + '</div>' +
+      '</div>';
+    }).join('');
+  }catch(e){
+    listEl.innerHTML = '<div style="color:var(--danger);font-size:11px;padding:12px;">' + esc(e.message) + '</div>';
+    totalEl.textContent = '—';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  📊 KPI TRACKER — Weekly performance scoring + bonus calculation
+// ════════════════════════════════════════════════════════════════
+//  Each role has a set of weighted KPIs with targets. Admin enters
+//  weekly actuals, system auto-scores, color-codes, and computes
+//  bonus tier based on weighted overall score.
+// ════════════════════════════════════════════════════════════════
+
+// ── Tasks Manager URL config ─────────────────────────────────
+var TASKS_MGR_URL = localStorage.getItem('tc_tasks_mgr_url') || '';
+
+function saveTasksMgrUrl(){
+  var url = (document.getElementById('tasks-mgr-url').value || '').trim();
+  var resEl = document.getElementById('tasks-mgr-result');
+  if(!url){
+    localStorage.removeItem('tc_tasks_mgr_url');
+    TASKS_MGR_URL = '';
+    resEl.innerHTML = '<span style="color:var(--muted);">Cleared.</span>';
+    return;
+  }
+  localStorage.setItem('tc_tasks_mgr_url', url);
+  TASKS_MGR_URL = url;
+  resEl.innerHTML = '<span style="color:var(--success);">✓ Saved.</span>';
+}
+
+// ── Cross-GAS JSONP fetcher (for Tasks Manager) ─────────────
+function tasksMgrCall(action, payload){
+  return new Promise(function(resolve, reject){
+    if(!TASKS_MGR_URL){ reject(new Error('Tasks Manager URL not set')); return; }
+    var cb = 'tmcb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+    var done = false;
+    var to = setTimeout(function(){
+      if(done) return; done = true; delete window[cb];
+      var s = document.getElementById(cb); if(s) s.remove();
+      reject(new Error('Tasks Manager timed out'));
+    }, 15000);
+    window[cb] = function(data){
+      if(done) return; done = true; clearTimeout(to); delete window[cb];
+      var s = document.getElementById(cb); if(s) s.remove();
+      resolve(data);
+    };
+    var data = btoa(unescape(encodeURIComponent(JSON.stringify({ action: action, payload: payload || {} }))));
+    var script = document.createElement('script');
+    script.id = cb;
+    script.src = TASKS_MGR_URL + '?callback=' + cb + '&d=' + encodeURIComponent(data);
+    script.onerror = function(){
+      if(done) return; done = true; clearTimeout(to); delete window[cb]; script.remove();
+      reject(new Error('Tasks Manager unreachable'));
+    };
+    document.body.appendChild(script);
+  });
+}
+
+// Helper: color for a score value
+function perfScoreColor(score){
+  if(score >= 95) return { bg:'rgba(58,125,92,.12)', txt:'#3d8c6e', label:'🟢' };
+  if(score >= 75) return { bg:'rgba(218,175,52,.15)', txt:'#a07e1c', label:'🟡' };
+  return { bg:'rgba(192,84,74,.12)', txt:'#c0544a', label:'🔴' };
+}
+
+// ════════════════════════════════════════════════════════════════
+//  🎯 PERFORMANCE REPORT — Unified attendance + tasks + evals view
+// ════════════════════════════════════════════════════════════════
+function perfInit(){
+  var sel = document.getElementById('perf-emp');
+  var staff = ((ADMIN_DATA && ADMIN_DATA.staff)||[]).filter(function(s){ return s.status !== 'inactive'; });
+  sel.innerHTML = '<option value="">— Select employee —</option>' +
+    staff.map(function(s){ return '<option value="'+esc(s.name)+'">'+esc(s.name)+'</option>'; }).join('');
+  // Default to current PHT month
+  document.getElementById('perf-from').value = monthStartPHT();
+  document.getElementById('perf-to').value = monthEndPHT();
+}
+
+function perfPreset(kind){
+  var p = nowPHT();
+  var to = todayPHT();
+  var fromD;
+  if(kind === 'week'){
+    var d = new Date(p.year, p.month-1, p.day);
+    var dow = d.getDay();
+    var diff = dow === 0 ? -6 : 1 - dow;
+    d.setDate(d.getDate() + diff);
+    fromD = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  } else if(kind === 'month'){
+    fromD = monthStartPHT();
+  } else { // quarter (last 90 days)
+    var d2 = new Date(p.year, p.month-1, p.day);
+    d2.setDate(d2.getDate() - 89);
+    fromD = d2.getFullYear() + '-' + String(d2.getMonth()+1).padStart(2,'0') + '-' + String(d2.getDate()).padStart(2,'0');
+  }
+  document.getElementById('perf-from').value = fromD;
+  document.getElementById('perf-to').value = to;
+  if(document.getElementById('perf-emp').value) perfGenerate();
+}
+
+async function perfGenerate(){
+  var emp  = document.getElementById('perf-emp').value;
+  var from = document.getElementById('perf-from').value;
+  var to   = document.getElementById('perf-to').value;
+  var out  = document.getElementById('perf-output');
+  if(!emp){ showToast('⚠ Pick an employee'); return; }
+  if(!from || !to){ showToast('⚠ Pick a date range'); return; }
+
+  out.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;">📊 Compiling performance data…</div>';
+  try{
+    // Fetch from TimeCommand GAS (attendance + tasks sessions + evals)
+    var r = await gas('getPerformanceReport', { employee: emp, from: from, to: to });
+    if(!r.ok) throw new Error(r.error || 'Failed to load');
+
+    // Also try fetching from Tasks Manager (tasks completed)
+    r.tasksMgr = { connected: false, completed: 0, total: 0, avgTurnaround: 0 };
+    if(TASKS_MGR_URL){
+      try{
+        var tmr = await tasksMgrCall('getTasksForEmployee', { employee: emp, from: from, to: to });
+        if(tmr && tmr.ok){
+          var tasks = tmr.tasks || [];
+          var completed = tasks.filter(function(t){ return t.completedDate || t.completedAt; });
+          var turnarounds = completed.map(function(t){
+            var s = new Date(String(t.createdAt||t.assignedAt||'').slice(0,10));
+            var e2 = new Date(String(t.completedDate||t.completedAt||'').slice(0,10));
+            if(isNaN(s.getTime())||isNaN(e2.getTime())) return null;
+            return (e2-s)/86400000;
+          }).filter(function(v){ return v!==null&&v>=0; });
+          r.tasksMgr = {
+            connected: true,
+            total: tasks.length,
+            completed: completed.length,
+            avgTurnaround: turnarounds.length > 0 ? turnarounds.reduce(function(a,b){return a+b;},0)/turnarounds.length : 0
+          };
+        }
+      }catch(e){ r.tasksMgr.error = e.message; }
+    }
+    out.innerHTML = perfRenderReport(emp, from, to, r);
+  }catch(e){
+    out.innerHTML = '<div style="color:var(--danger);padding:14px;font-size:12px;border:1px solid var(--danger);border-radius:8px;background:rgba(192,84,74,.05);">❌ '+esc(e.message)+'</div>';
+  }
+}
+
+function perfRenderReport(emp, from, to, r){
+  var att = r.attendance || {};
+  var tasks = r.tasks || {};
+  var tm = r.tasksMgr || {};
+  var evals = r.evals || {};
+
+  // ── Compute auto-KPIs ──
+  var kpis = [];
+  // 1. Attendance Rate
+  var attRate = att.expectedDays > 0 ? Math.min(100, (att.daysWorked / att.expectedDays) * 100) : 0;
+  kpis.push({ name:'Attendance Rate', actual: Math.round(attRate)+'%', score:attRate, source:'TimeLogs', target:'100%' });
+
+  // 2. Total Hours Worked
+  var hrsTarget = (att.expectedDays||0) * 8;
+  var hrsScore = hrsTarget > 0 ? Math.min(100, ((att.totalHours||0)/hrsTarget)*100) : 0;
+  kpis.push({ name:'Hours Worked', actual:(att.totalHours||0).toFixed(1)+'h', score:hrsScore, source:'TimeLogs', target:hrsTarget.toFixed(0)+'h' });
+
+  // 3. Late Arrivals (lower is better)
+  var maxLate = Math.max(att.daysWorked||1, 1);
+  var lateScore = Math.max(0, 100 - ((att.lateCount||0) / maxLate * 100));
+  kpis.push({ name:'Punctuality', actual:(att.lateCount||0)+' late', score:lateScore, source:'TimeLogs', target:'0 late' });
+
+  // 4. Tasks Timed (task timer sessions)
+  var taskTimedScore = Math.min(100, (tasks.totalSessions||0) / Math.max(att.daysWorked||1,1) * 25);
+  kpis.push({ name:'Tasks Timed', actual:(tasks.totalSessions||0)+' sessions', score:taskTimedScore, source:'Task Timer', target:'~4/day' });
+
+  // 5. Productive Time Tracked
+  var prodTarget = (att.daysWorked||1) * 240;
+  var prodScore = prodTarget > 0 ? Math.min(100, (tasks.totalMin||0)/prodTarget*100) : 0;
+  kpis.push({ name:'Productive Time', actual:_formatDuration((tasks.totalMin||0)*60000), score:prodScore, source:'Task Timer', target:_formatDuration(prodTarget*60000) });
+
+  // 6. Tasks Completed (from Tasks Manager)
+  if(tm.connected){
+    var complScore = tm.total > 0 ? (tm.completed / tm.total) * 100 : 0;
+    kpis.push({ name:'Tasks Completed', actual:tm.completed+' / '+tm.total, score:complScore, source:'Tasks Manager', target:'100%' });
+  }
+
+  // 7. Avg Turnaround (from Tasks Manager)
+  if(tm.connected && tm.completed > 0){
+    var turnScore = tm.avgTurnaround <= 3 ? 100 : tm.avgTurnaround <= 5 ? 75 : 50;
+    kpis.push({ name:'Avg Turnaround', actual:tm.avgTurnaround.toFixed(1)+' days', score:turnScore, source:'Tasks Manager', target:'≤3 days' });
+  }
+
+  // 8. Staff Evaluation Score (from Self-Eval / Admin Review)
+  if(evals.count > 0 && evals.avgScore != null){
+    var rawEval = evals.avgScore;
+    var evalPct = rawEval <= 5 ? (rawEval / 5) * 100 : rawEval;
+    var evalDisplay = rawEval <= 5 ? rawEval.toFixed(1) + ' / 5' : Math.round(rawEval) + '%';
+    kpis.push({ name:'Staff Evaluation', actual:evalDisplay+' ('+evals.count+' eval'+(evals.count!==1?'s':'')+')', score:evalPct, source:'Self-Eval', target:'5 / 5' });
+  } else {
+    kpis.push({ name:'Staff Evaluation', actual:'No evals yet', score:0, source:'Self-Eval', target:'5 / 5' });
+  }
+
+  // Overall composite
+  var composite = kpis.length > 0 ? kpis.reduce(function(a,k){return a+k.score;},0)/kpis.length : 0;
+  var compColor = perfScoreColor(composite);
+  var compLabel = composite >= 95 ? '🏆 Excellent' : composite >= 85 ? '💎 Strong' : composite >= 75 ? '✓ On Track' : '⚠ Needs Improvement';
+
+  var html = '';
+
+  // ── Header ──
+  html += '<div style="background:linear-gradient(135deg,var(--slate) 0%,#3a3a3a 100%);color:#fff;border-radius:14px;padding:20px;margin-bottom:14px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">' +
+      '<div>' +
+        '<div style="font-size:9px;text-transform:uppercase;letter-spacing:1.2px;opacity:.7;font-weight:700;">Performance Report</div>' +
+        '<div style="font-size:22px;font-weight:800;margin-top:4px;">'+esc(emp)+'</div>' +
+        '<div style="font-size:11px;opacity:.7;margin-top:2px;">'+esc(from)+' → '+esc(to)+' · '+(r.daysCovered||0)+' days</div>' +
+      '</div>' +
+      '<div style="text-align:center;background:rgba(255,255,255,.1);padding:14px 18px;border-radius:12px;min-width:130px;">' +
+        '<div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;opacity:.7;font-weight:700;">Overall</div>' +
+        '<div style="font-size:36px;font-weight:800;color:'+compColor.txt+';margin-top:2px;">'+Math.round(composite)+'%</div>' +
+        '<div style="font-size:11px;font-weight:600;color:'+compColor.txt+';">'+compLabel+'</div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+
+  // ── Auto-KPI Scorecard ──
+  html += '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;">' +
+    '<div style="font-size:13px;font-weight:700;color:var(--slate);margin-bottom:12px;">📊 Performance Scorecard</div>' +
+    '<div style="font-size:10px;color:var(--muted);margin-bottom:10px;">All metrics auto-computed — no manual entry needed.</div>' +
+    '<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:480px;">' +
+      '<thead><tr style="background:var(--light);color:var(--slate);">' +
+        '<th style="padding:8px 12px;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.5px;">KPI</th>' +
+        '<th style="padding:8px;text-align:center;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.5px;width:80px;">Target</th>' +
+        '<th style="padding:8px;text-align:center;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.5px;width:100px;">Actual</th>' +
+        '<th style="padding:8px;text-align:center;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.5px;width:70px;">Score</th>' +
+        '<th style="padding:8px;text-align:center;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.5px;width:90px;">Source</th>' +
+      '</tr></thead>' +
+      '<tbody>' +
+    kpis.map(function(k){
+      var col = perfScoreColor(k.score);
+      return '<tr style="border-top:1px solid var(--border);background:'+col.bg.replace(/0\.\d+\)/, '0.03)')+';">' +
+        '<td style="padding:9px 12px;font-weight:600;color:var(--slate);">'+esc(k.name)+'</td>' +
+        '<td style="padding:9px 8px;text-align:center;color:var(--muted);font-size:11px;">'+esc(k.target)+'</td>' +
+        '<td style="padding:9px 8px;text-align:center;font-weight:700;color:var(--slate);">'+esc(k.actual)+'</td>' +
+        '<td style="padding:9px 8px;text-align:center;"><span style="background:'+col.bg+';color:'+col.txt+';padding:3px 8px;border-radius:10px;font-weight:700;font-size:11px;">'+Math.round(k.score)+'%</span></td>' +
+        '<td style="padding:9px 8px;text-align:center;font-size:10px;color:var(--muted);">'+esc(k.source)+'</td>' +
+      '</tr>';
+    }).join('') +
+      '</tbody></table></div></div>';
+
+  // ── Task Breakdown (by category from Task Timer) ──
+  if(tasks.byCategory && tasks.byCategory.length){
+    html += '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--slate);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">' +
+        '<span>⏱ Task Time Breakdown</span>' +
+        '<span style="font-size:11px;color:var(--muted);font-weight:500;">'+(tasks.totalSessions||0)+' sessions · '+_formatDuration((tasks.totalMin||0)*60000)+'</span>' +
+      '</div>';
+    var maxMin = tasks.byCategory.reduce(function(m,c){ return Math.max(m, c.minutes); }, 0);
+    html += tasks.byCategory.map(function(c){
+      var pct = maxMin > 0 ? (c.minutes / maxMin) * 100 : 0;
+      var pctOfTotal = tasks.totalMin > 0 ? Math.round((c.minutes/tasks.totalMin)*1000)/10 : 0;
+      return '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 60px 70px;gap:8px;align-items:center;font-size:11.5px;">' +
+        '<div>' +
+          '<div style="font-weight:500;color:var(--slate);">'+esc(c.task)+'</div>' +
+          '<div style="margin-top:3px;height:5px;background:rgba(0,0,0,.06);border-radius:3px;overflow:hidden;"><div style="width:'+pct+'%;height:100%;background:linear-gradient(90deg,var(--gold),var(--success));"></div></div>' +
+        '</div>' +
+        '<div style="text-align:center;color:var(--muted);font-size:10px;">'+c.count+' runs</div>' +
+        '<div style="text-align:right;font-weight:700;color:var(--gold);">'+_formatDuration(c.minutes*60000)+'</div>' +
+      '</div>';
+    }).join('');
+    html += '</div>';
+  }
+
+  // ── Tasks Manager summary (if connected) ──
+  if(!tm.connected){
+    html += '<div style="background:var(--white);border:1px dashed var(--border);border-radius:12px;padding:16px;margin-bottom:14px;text-align:center;">' +
+      '<div style="font-size:11px;color:var(--muted);line-height:1.5;">🔗 <strong>Tasks Manager not connected.</strong> Add the Tasks Manager GAS URL in Admin → Settings to include task completion data in this report.</div>' +
+    '</div>';
+  }
+
+  // ── Footer ──
+  html += '<div style="font-size:10px;color:var(--muted);text-align:center;padding:8px;margin-top:8px;">' +
+    'Generated ' + todayPHT() + ' ' + timeStrPHT(true) + ' PHT · All data auto-computed' +
+  '</div>';
+
+  return html;
 }
 
 // ════════════════════════════════════════
