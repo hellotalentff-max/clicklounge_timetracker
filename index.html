@@ -325,7 +325,7 @@ button:disabled{opacity:.5;cursor:default;}
       <button class="stab on" onclick="sTab('records')" id="stab-records">📋 My Records</button>
       <button class="stab" onclick="sTab('tasks')" id="stab-tasks">⏱ My Tasks</button>
       <button class="stab" onclick="sTab('leave')" id="stab-leave">📅 Leave</button>
-      <button class="stab" onclick="sTab('eval')" id="stab-eval">⭐ Self-Eval</button>
+      <button class="stab" onclick="sTab('eval')" id="stab-eval">⭐ Self-Eval <span class="badge-n" id="eval-note-badge" style="display:none;">0</span></button>
       <button class="stab" onclick="sTab('profile')" id="stab-profile">👤 My Profile</button>
     </div>
 
@@ -1034,6 +1034,7 @@ async function pinSubmit(){
     if(_taskTickInt){ clearInterval(_taskTickInt); _taskTickInt = null; }
     showStaffView();
     restoreTaskSession();
+    checkEvalNotesBadge();
   }catch(e){ showLoginErr(e.message); }
 }
 
@@ -1235,26 +1236,78 @@ function sTab(id){
 }
 
 // ── My feedback notes (from admin's communication board) ──
+function _evalNotesReadKey(){ return 'tc_eval_notes_read_' + ((CURR_USER && CURR_USER.name) || ''); }
+
 async function loadMyNotes(){
   var box = document.getElementById('s-my-notes');
   if(!box || !CURR_USER) return;
   try{
     var r = await gas('getMyEvalNotes', { name: CURR_USER.name, pin: CURR_PIN });
-    if(!r.ok || !r.notes || !r.notes.length){ box.innerHTML = ''; return; }
+    if(!r.ok || !r.notes || !r.notes.length){
+      box.innerHTML = '';
+      updateEvalNoteBadge(0);
+      return;
+    }
     var open = r.notes.filter(function(n){ return n.status === 'open'; });
-    if(!open.length){ box.innerHTML = ''; return; }
+    if(!open.length){
+      box.innerHTML = '';
+      updateEvalNoteBadge(0);
+      return;
+    }
+
+    // Count unread: notes created after the last time they viewed this tab
+    var lastRead = localStorage.getItem(_evalNotesReadKey()) || '2000-01-01';
+    var unread = open.filter(function(n){ return String(n.createdAt||'') > lastRead; }).length;
+    updateEvalNoteBadge(unread);
+
     box.innerHTML =
       '<div style="background:rgba(218,175,52,.08);border:1.5px solid rgba(218,175,52,.3);border-radius:12px;padding:14px 16px;margin-bottom:14px;">'+
-        '<div style="font-size:12px;font-weight:700;color:var(--gold);margin-bottom:4px;">📌 Feedback Notes from Management ('+open.length+')</div>'+
+        '<div style="font-size:12px;font-weight:700;color:var(--gold);margin-bottom:4px;">📌 Feedback Notes from Management ('+open.length+')'+(unread?' <span style="background:var(--danger);color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">'+unread+' new</span>':'')+'</div>'+
         '<div style="font-size:10px;color:var(--muted);margin-bottom:10px;">These will be discussed in your next evaluation.</div>'+
         open.map(function(n){
-          return '<div style="padding:9px 11px;background:var(--white);border-radius:8px;margin-bottom:5px;">'+
-            '<div style="font-size:9px;color:var(--muted);margin-bottom:3px;">🕐 '+esc(n.createdAt)+' PHT</div>'+
+          var isNew = String(n.createdAt||'') > lastRead;
+          return '<div style="padding:9px 11px;background:'+(isNew?'rgba(218,175,52,.06)':'var(--white)')+';border-radius:8px;margin-bottom:5px;'+(isNew?'border-left:3px solid var(--gold);':'')+'">'+
+            '<div style="font-size:9px;color:var(--muted);margin-bottom:3px;">🕐 '+esc(n.createdAt)+' PHT'+(isNew?' <strong style="color:var(--gold);">NEW</strong>':'')+'</div>'+
             '<div style="font-size:12px;color:var(--slate);line-height:1.5;">'+esc(n.note)+'</div>'+
           '</div>';
         }).join('')+
       '</div>';
+
+    // Mark as read now that they're viewing
+    markEvalNotesRead();
   }catch(e){ box.innerHTML = ''; }
+}
+
+function markEvalNotesRead(){
+  var now = nowPHT();
+  var ts = now.year+'-'+String(now.month).padStart(2,'0')+'-'+String(now.day).padStart(2,'0')+' '+timeStrPHT(false);
+  localStorage.setItem(_evalNotesReadKey(), ts);
+  // Clear badge after a brief delay so they see the "NEW" labels first
+  setTimeout(function(){ updateEvalNoteBadge(0); }, 3000);
+}
+
+function updateEvalNoteBadge(count){
+  var badge = document.getElementById('eval-note-badge');
+  if(!badge) return;
+  if(count > 0){
+    badge.textContent = count;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// Check for unread notes on login (without loading the full panel)
+async function checkEvalNotesBadge(){
+  if(!CURR_USER) return;
+  try{
+    var r = await gas('getMyEvalNotes', { name: CURR_USER.name, pin: CURR_PIN });
+    if(!r.ok || !r.notes) return;
+    var open = r.notes.filter(function(n){ return n.status === 'open'; });
+    var lastRead = localStorage.getItem(_evalNotesReadKey()) || '2000-01-01';
+    var unread = open.filter(function(n){ return String(n.createdAt||'') > lastRead; }).length;
+    updateEvalNoteBadge(unread);
+  }catch(e){}
 }
 
 // ── KPI definitions used by evaluation form ──
