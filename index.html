@@ -194,18 +194,12 @@ button:disabled{opacity:.5;cursor:default;}
       <option value="">— choose name —</option>
     </select>
     <label>Enter Your 4-Digit PIN</label>
-    <div class="pin-display" id="pin-display">
-      <div class="pin-dot" id="pd0"></div><div class="pin-dot" id="pd1"></div>
-      <div class="pin-dot" id="pd2"></div><div class="pin-dot" id="pd3"></div>
-    </div>
-    <div class="pin-pad">
-      <button class="pin-btn" onclick="pinPress(1)">1</button><button class="pin-btn" onclick="pinPress(2)">2</button><button class="pin-btn" onclick="pinPress(3)">3</button>
-      <button class="pin-btn" onclick="pinPress(4)">4</button><button class="pin-btn" onclick="pinPress(5)">5</button><button class="pin-btn" onclick="pinPress(6)">6</button>
-      <button class="pin-btn" onclick="pinPress(7)">7</button><button class="pin-btn" onclick="pinPress(8)">8</button><button class="pin-btn" onclick="pinPress(9)">9</button>
-      <button class="pin-btn del" onclick="pinDel()">⌫</button>
-      <button class="pin-btn" onclick="pinPress(0)">0</button>
-      <button class="pin-btn enter" onclick="pinSubmit()">✓ Go</button>
-    </div>
+    <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" id="login-pin" class="fi"
+      placeholder="••••"
+      style="width:100%;text-align:center;font-size:24px;letter-spacing:12px;padding:12px;border:2px solid rgba(215,144,104,.4);border-radius:10px;background:rgba(255,255,255,.08);color:#f5f0e8;box-sizing:border-box;margin-bottom:12px;"
+      onkeydown="if(event.key==='Enter')pinSubmit()"
+      oninput="if(this.value.length===4)pinSubmit()">
+    <button class="btn btn-t" onclick="pinSubmit()" style="width:100%;padding:13px;font-size:15px;font-weight:700;">✓ Log In</button>
     <div class="login-err" id="login-err"></div>
   </div>
   <div class="admin-link" onclick="adminLogin()">🔐 Admin Access</div>
@@ -950,7 +944,7 @@ var CURR_USER = null; // {name, role, type, rate}
 var CURR_PIN  = '';
 var IS_ADMIN  = false;
 var ADMIN_PIN_STORED = '';
-var PIN_ENTRY = '';
+
 var STAFF_LIST = [];
 var MY_DATA = {};
 var ADMIN_DATA = {};
@@ -1015,29 +1009,15 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // ════════════════════════════════════════
-//  PIN PAD
+//  LOGIN (PIN text input)
 // ════════════════════════════════════════
-function pinPress(n){
-  if(PIN_ENTRY.length>=4) return;
-  PIN_ENTRY += String(n);
-  renderPinDots();
-  if(PIN_ENTRY.length===4) setTimeout(pinSubmit, 120);
-}
-function pinDel(){
-  PIN_ENTRY = PIN_ENTRY.slice(0,-1);
-  renderPinDots();
-}
-function renderPinDots(){
-  for(var i=0;i<4;i++){
-    var dot = document.getElementById('pd'+i);
-    if(dot) dot.classList.toggle('filled', i<PIN_ENTRY.length);
-  }
-}
-function showLoginErr(msg){ var e=document.getElementById('login-err'); if(e){e.textContent=msg;setTimeout(function(){e.textContent='';},3000);} PIN_ENTRY=''; renderPinDots(); }
+function showLoginErr(msg){ var e=document.getElementById('login-err'); if(e){e.textContent=msg;setTimeout(function(){e.textContent='';},3000);} var p=document.getElementById('login-pin'); if(p){p.value='';p.focus();} }
+
 
 async function pinSubmit(){
   var name = document.getElementById('login-name').value;
-  var pin  = PIN_ENTRY;
+  var pinEl = document.getElementById('login-pin');
+  var pin  = (pinEl ? pinEl.value : '').trim();
   if(!name){ showLoginErr('Please select your name first.'); return; }
   if(pin.length!==4){ showLoginErr('Enter your 4-digit PIN.'); return; }
   showToast('Verifying…');
@@ -1047,8 +1027,13 @@ async function pinSubmit(){
     CURR_USER = r.employee;
     CURR_PIN  = pin;
     MY_DATA   = r;
+    if(pinEl) pinEl.value = '';
     IS_ADMIN  = false;
+    // Reset in-memory timer from any previous user, then restore THIS user's running timer
+    _taskSession = null;
+    if(_taskTickInt){ clearInterval(_taskTickInt); _taskTickInt = null; }
     showStaffView();
+    restoreTaskSession();
   }catch(e){ showLoginErr(e.message); }
 }
 
@@ -1117,7 +1102,11 @@ function showView(id){
   el.style.display = id === 'login-view' ? 'flex' : 'block';
 }
 function doLogout(){
-  CURR_USER=null;CURR_PIN='';IS_ADMIN=false;PIN_ENTRY='';renderPinDots();
+  // Keep the persisted timer (localStorage) so it survives — just stop the UI tick.
+  _taskSession = null;
+  if(_taskTickInt){ clearInterval(_taskTickInt); _taskTickInt = null; }
+  CURR_USER=null;CURR_PIN='';IS_ADMIN=false;
+  var pinEl=document.getElementById('login-pin'); if(pinEl) pinEl.value='';
   showView('login-view');loadStaffNames();
 }
 
@@ -1242,7 +1231,7 @@ function sTab(id){
   });
   if(id === 'profile') renderMyProfile();
   if(id === 'eval'){ renderSelfEval(); loadMyNotes(); }
-  if(id === 'tasks') loadTaskSessions();
+  if(id === 'tasks'){ loadTaskSessions(); restoreTaskSession(); }
 }
 
 // ── My feedback notes (from admin's communication board) ──
@@ -3397,6 +3386,42 @@ function showToast(msg){
 var _taskSession = null;     // {name, startTime (epoch ms), startedDisplay}
 var _taskTickInt = null;
 
+// ── Per-employee timer persistence ──────────────────────────
+// Each employee's running timer is saved under their own key, so
+// multiple employees can run timers at the same time (even sharing
+// one device — switching users doesn't kill anyone's timer) and a
+// page refresh never loses a running session.
+function _taskKey(){ return 'tc_task_' + ((CURR_USER && CURR_USER.name) || ''); }
+
+function _saveTaskState(){
+  try{
+    if(_taskSession) localStorage.setItem(_taskKey(), JSON.stringify(_taskSession));
+    else localStorage.removeItem(_taskKey());
+  }catch(e){}
+}
+
+// Restore this employee's running timer (call after login / tab open)
+function restoreTaskSession(){
+  try{
+    if(!CURR_USER || !CURR_USER.name) return;
+    var raw = localStorage.getItem(_taskKey());
+    if(!raw){ return; }
+    var saved = JSON.parse(raw);
+    if(!saved || !saved.startTime) return;
+    _taskSession = saved;
+    // Switch UI to running state
+    document.getElementById('task-start-area').style.display = 'none';
+    document.getElementById('task-running-area').style.display = '';
+    document.getElementById('task-current-name').textContent = saved.name;
+    document.getElementById('task-started-at').textContent = 'Started at ' + saved.startedDisplay;
+    document.getElementById('task-timer-state').textContent = '⏱ Task running';
+    document.getElementById('task-timer-state').style.color = 'var(--gold)';
+    _tickTaskTimer();
+    if(_taskTickInt) clearInterval(_taskTickInt);
+    _taskTickInt = setInterval(_tickTaskTimer, 1000);
+  }catch(e){}
+}
+
 // Show/hide the optional detail input when "Other" is selected
 function _toggleTaskDetail(){
   var sel = document.getElementById('task-name-input');
@@ -3432,6 +3457,7 @@ function startTaskSession(){
     startTime: Date.now(),
     startedDisplay: timeStrPHT(true)
   };
+  _saveTaskState();
 
   // Switch UI to running state
   document.getElementById('task-start-area').style.display = 'none';
@@ -3504,6 +3530,7 @@ async function stopTaskSession(){
 
 function _resetTaskTimerUI(){
   _taskSession = null;
+  _saveTaskState(); // clears the persisted timer for this employee
   if(_taskTickInt){ clearInterval(_taskTickInt); _taskTickInt = null; }
   document.getElementById('task-start-area').style.display = '';
   document.getElementById('task-running-area').style.display = 'none';
