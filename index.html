@@ -371,6 +371,7 @@ button:disabled{opacity:.5;cursor:default;}
 
     <!-- Self-Evaluation Tab -->
     <div id="stab-panel-eval" style="display:none;">
+      <div id="s-my-notes"></div>
       <div id="s-eval-content"></div>
     </div>
 
@@ -1240,8 +1241,31 @@ function sTab(id){
     if(pnl) pnl.style.display=t===id?'':'none';
   });
   if(id === 'profile') renderMyProfile();
-  if(id === 'eval') renderSelfEval();
+  if(id === 'eval'){ renderSelfEval(); loadMyNotes(); }
   if(id === 'tasks') loadTaskSessions();
+}
+
+// ── My feedback notes (from admin's communication board) ──
+async function loadMyNotes(){
+  var box = document.getElementById('s-my-notes');
+  if(!box || !CURR_USER) return;
+  try{
+    var r = await gas('getMyEvalNotes', { name: CURR_USER.name, pin: CURR_PIN });
+    if(!r.ok || !r.notes || !r.notes.length){ box.innerHTML = ''; return; }
+    var open = r.notes.filter(function(n){ return n.status === 'open'; });
+    if(!open.length){ box.innerHTML = ''; return; }
+    box.innerHTML =
+      '<div style="background:rgba(218,175,52,.08);border:1.5px solid rgba(218,175,52,.3);border-radius:12px;padding:14px 16px;margin-bottom:14px;">'+
+        '<div style="font-size:12px;font-weight:700;color:var(--gold);margin-bottom:4px;">📌 Feedback Notes from Management ('+open.length+')</div>'+
+        '<div style="font-size:10px;color:var(--muted);margin-bottom:10px;">These will be discussed in your next evaluation.</div>'+
+        open.map(function(n){
+          return '<div style="padding:9px 11px;background:var(--white);border-radius:8px;margin-bottom:5px;">'+
+            '<div style="font-size:9px;color:var(--muted);margin-bottom:3px;">🕐 '+esc(n.createdAt)+' PHT</div>'+
+            '<div style="font-size:12px;color:var(--slate);line-height:1.5;">'+esc(n.note)+'</div>'+
+          '</div>';
+        }).join('')+
+      '</div>';
+  }catch(e){ box.innerHTML = ''; }
 }
 
 // ── KPI definitions used by evaluation form ──
