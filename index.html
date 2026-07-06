@@ -578,7 +578,7 @@ button:disabled{opacity:.5;cursor:default;}
       <div class="aform" style="border:2px solid var(--gold);background:rgba(215,144,104,.04);">
         <div class="aform-title">🔗 Step 1 — Connect to Google Apps Script</div>
         <p style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.6;">
-          Use your <strong>same POS GAS URL</strong> — TimeCommand routes are now built into it. Just paste the URL and test.
+          Paste your <strong>TimeCommand GAS URL</strong> — this is a <strong>separate</strong> Apps Script project from the POS. Find it in the TimeCommand Apps Script → Deploy → Manage deployments → Web app URL.
         </p>
         <div class="fg"><label class="fl">POS GAS Deployment URL</label>
           <input class="fi" id="gas-url-input" placeholder="https://script.google.com/macros/s/…/exec">
@@ -3234,7 +3234,11 @@ async function saveGasUrl(){
       loadStaffNames();
     } else {
       res.style.color='var(--danger)';
-      res.textContent = '⚠ Connected but got unexpected response — check you copied the right URL.';
+      if(r && r.message && String(r.message).indexOf('POS API')!==-1){
+        res.textContent = '⚠ That\'s the POS GAS URL — TimeCommand needs its OWN deployment URL from the TimeCommand Apps Script project.';
+      } else {
+        res.textContent = '⚠ Connected but got unexpected response — check you copied the right URL.';
+      }
       detail.style.display='block';
       detail.textContent = JSON.stringify(r);
     }
