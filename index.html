@@ -503,6 +503,28 @@ button:disabled{opacity:.5;cursor:default;}
 
       <div id="perf-output"></div>
 
+      <!-- Communication Board — notes for next evaluation -->
+      <div class="aform" style="margin-top:14px;">
+        <div class="aform-title" style="margin-bottom:2px;">📌 Communication Board</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Jot down observations about an employee anytime. Open notes automatically appear when you review that employee's next evaluation.</div>
+        <div class="aform-grid" style="grid-template-columns:180px 1fr auto;gap:8px;align-items:end;">
+          <div class="fg" style="margin:0;"><label class="fl">Employee</label><select class="fi" id="cb-emp"></select></div>
+          <div class="fg" style="margin:0;"><label class="fl">Note</label><input class="fi" id="cb-note" placeholder="e.g. Went above and beyond with the Cruz family shoot on Jul 3" onkeydown="if(event.key==='Enter')cbAddNote()"></div>
+          <button class="btn btn-t" onclick="cbAddNote()" style="height:38px;">➕ Add Note</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
+          <select class="fi" id="cb-filter-emp" onchange="cbLoadNotes()" style="max-width:180px;font-size:11px;">
+            <option value="">All employees</option>
+          </select>
+          <select class="fi" id="cb-filter-status" onchange="cbLoadNotes()" style="max-width:140px;font-size:11px;">
+            <option value="open" selected>📬 Open notes</option>
+            <option value="resolved">✓ Resolved</option>
+            <option value="">All</option>
+          </select>
+        </div>
+        <div id="cb-notes-list" style="margin-top:10px;font-size:12px;color:var(--muted);">Loading…</div>
+      </div>
+
       <!-- Reviews section (inside Performance tab) -->
       <div class="aform" style="margin-top:14px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -1666,6 +1688,7 @@ function aTab(id){
   if(id === 'applicants') renderApplicants();
   if(id === 'perf'){ perfInit(); loadReviews(); }
   if(id === 'requests') reqSub('ot');
+  if(id === 'reports'){ try{ populateReportEmpSelect(); }catch(e){} }
 }
 
 // Sub-tabs inside the Requests panel (OT / Leave / Holidays)
@@ -2181,10 +2204,14 @@ function openReviewModal(id){
   }
   var isReviewed = (e.status === 'reviewed');
 
+  // Communication board notes for this employee (loaded async, injected after modal opens)
+  var cbNotesHtml = '<div id="review-cb-notes"></div>';
+
   // Build the review form
   var html =
     '<h3 style="margin-bottom:6px;">⭐ '+(isReviewed?'Reviewed: ':'Review: ')+esc(e.employee)+'</h3>'+
     '<div style="font-size:11px;color:var(--muted);margin-bottom:14px;">'+esc(e.period||'—')+' · Submitted: '+esc(e.submittedAt||e.createdAt)+(isReviewed?' · Reviewed: '+esc(e.adminReviewDate||''):'')+'</div>'+
+    cbNotesHtml+
 
     // ── Side-by-side KPI ratings ──
     '<div style="background:var(--light);padding:12px;border-radius:10px;margin-bottom:14px;">'+
@@ -2247,6 +2274,28 @@ function openReviewModal(id){
   bodyEl.innerHTML = html;
   document.getElementById('review-bg').classList.add('open');
   console.log('Review modal opened with', EVAL_KPIS.length, 'KPIs');
+
+  // Load open communication board notes for this employee
+  (async function(){
+    try{
+      var r = await gas('getEvalNotes', { adminPin: ADMIN_PIN_STORED, employee: e.employee, status: 'open' });
+      var target = document.getElementById('review-cb-notes');
+      if(!target) return;
+      if(r.ok && r.notes && r.notes.length){
+        target.innerHTML =
+          '<div style="background:rgba(218,175,52,.08);border:1.5px solid rgba(218,175,52,.3);border-radius:10px;padding:12px 14px;margin-bottom:14px;">'+
+            '<div style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">📌 Notes from Communication Board ('+r.notes.length+')</div>'+
+            r.notes.map(function(n){
+              return '<div style="padding:8px 10px;background:var(--white);border-radius:6px;margin-bottom:5px;">'+
+                '<div style="font-size:9px;color:var(--muted);margin-bottom:2px;">🕐 '+esc(n.createdAt)+' PHT · '+esc(n.createdBy||'Admin')+'</div>'+
+                '<div style="font-size:12px;color:var(--slate);line-height:1.4;">'+esc(n.note)+'</div>'+
+              '</div>';
+            }).join('')+
+            '<div style="font-size:10px;color:var(--muted);margin-top:6px;">💡 Discuss these during the review. Mark them ✓ Done from the Communication Board when covered.</div>'+
+          '</div>';
+      }
+    }catch(err){ /* silent */ }
+  })();
 }
 
 function closeReviewModal(){
@@ -3551,11 +3600,92 @@ function perfScoreColor(score){
 function perfInit(){
   var sel = document.getElementById('perf-emp');
   var staff = ((ADMIN_DATA && ADMIN_DATA.staff)||[]).filter(function(s){ return s.status !== 'inactive'; });
-  sel.innerHTML = '<option value="">— Select employee —</option>' +
-    staff.map(function(s){ return '<option value="'+esc(s.name)+'">'+esc(s.name)+'</option>'; }).join('');
+  var opts = staff.map(function(s){ return '<option value="'+esc(s.name)+'">'+esc(s.name)+'</option>'; }).join('');
+  sel.innerHTML = '<option value="">— Select employee —</option>' + opts;
   // Default to current PHT month
   document.getElementById('perf-from').value = monthStartPHT();
   document.getElementById('perf-to').value = monthEndPHT();
+  // Communication board selectors
+  var cbEmp = document.getElementById('cb-emp');
+  var cbFil = document.getElementById('cb-filter-emp');
+  if(cbEmp) cbEmp.innerHTML = '<option value="">— Select employee —</option>' + opts;
+  if(cbFil) cbFil.innerHTML = '<option value="">All employees</option>' + opts;
+  cbLoadNotes();
+}
+
+// ── Communication Board ─────────────────────────────────
+async function cbAddNote(){
+  var emp  = document.getElementById('cb-emp').value;
+  var note = (document.getElementById('cb-note').value||'').trim();
+  if(!emp){ showToast('⚠ Pick an employee'); return; }
+  if(!note){ showToast('⚠ Write a note first'); return; }
+  showToast('💾 Saving note…');
+  try{
+    var r = await gas('saveEvalNote', { adminPin: ADMIN_PIN_STORED, employee: emp, note: note, createdBy: 'Admin' });
+    if(!r.ok) throw new Error(r.error||'Save failed');
+    document.getElementById('cb-note').value = '';
+    showToast('✅ Note saved — will appear in '+emp+"'s next evaluation");
+    cbLoadNotes();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function cbLoadNotes(){
+  var box = document.getElementById('cb-notes-list');
+  if(!box) return;
+  var emp    = (document.getElementById('cb-filter-emp')||{}).value || '';
+  var status = (document.getElementById('cb-filter-status')||{}).value;
+  if(status === undefined) status = 'open';
+  box.textContent = 'Loading…';
+  try{
+    var r = await gas('getEvalNotes', { adminPin: ADMIN_PIN_STORED, employee: emp, status: status });
+    if(!r.ok) throw new Error(r.error||'Failed');
+    CB_NOTES = r.notes || [];
+    if(!CB_NOTES.length){
+      box.innerHTML = '<div style="text-align:center;padding:12px;color:var(--muted);font-size:11px;">No '+(status||'')+' notes'+(emp?' for '+esc(emp):'')+'.</div>';
+      return;
+    }
+    box.innerHTML = CB_NOTES.map(function(n){
+      var isOpen = n.status === 'open';
+      return '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:'+(isOpen?'var(--white)':'rgba(0,0,0,.02)')+';">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:10px;color:var(--muted);margin-bottom:3px;">' +
+              '<strong style="color:var(--teal);">'+esc(n.employee)+'</strong> · 🕐 '+esc(n.createdAt)+' PHT' +
+              (n.status==='resolved' ? ' · <span style="color:var(--success);">✓ resolved '+esc(n.resolvedAt||'')+'</span>' : '') +
+            '</div>' +
+            '<div style="font-size:12px;color:var(--slate);line-height:1.5;'+(isOpen?'':'text-decoration:line-through;opacity:.6;')+'">'+esc(n.note)+'</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:4px;flex-shrink:0;">' +
+            (isOpen ? '<button class="btn btn-sm btn-outline" style="font-size:9px;padding:3px 8px;" onclick="cbResolve(\''+esc(n.id)+'\')">✓ Done</button>' : '') +
+            '<button class="btn btn-sm btn-outline" style="font-size:9px;padding:3px 8px;color:var(--danger);" onclick="cbDelete(\''+esc(n.id)+'\')">🗑</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }catch(e){
+    box.innerHTML = '<div style="color:var(--danger);font-size:11px;">'+esc(e.message)+'</div>';
+  }
+}
+
+var CB_NOTES = [];
+
+async function cbResolve(id){
+  try{
+    var r = await gas('resolveEvalNote', { adminPin: ADMIN_PIN_STORED, id: id });
+    if(!r.ok) throw new Error(r.error||'Failed');
+    showToast('✓ Note marked resolved');
+    cbLoadNotes();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function cbDelete(id){
+  if(!confirm('Delete this note permanently?')) return;
+  try{
+    var r = await gas('deleteEvalNote', { adminPin: ADMIN_PIN_STORED, id: id });
+    if(!r.ok) throw new Error(r.error||'Failed');
+    showToast('🗑 Note deleted');
+    cbLoadNotes();
+  }catch(e){ showToast('❌ '+e.message); }
 }
 
 function perfPreset(kind){
