@@ -2194,6 +2194,143 @@ function populateReportEmpSelect(){
   if(to) to.value = monthEndPHT();
 }
 
+// ════════════════════════════════════════════════════════════
+//  PAYOUT RECORDING — track when staff receive their pay
+// ════════════════════════════════════════════════════════════
+function openPayoutModal(employeeName, amount, from, to){
+  var today = todayPHT ? todayPHT() : new Date().toISOString().slice(0,10);
+  openModal(
+    '<h3 style="margin:0 0 6px;">💰 Record Payout</h3>'+
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:14px;">Log this payment for '+esc(employeeName)+' · Period '+esc(from)+' to '+esc(to)+'</div>'+
+    '<div class="aform-grid" style="grid-template-columns:1fr;gap:12px;">'+
+      '<div class="fg"><label class="fl">Employee</label><input class="fi" id="po-emp" value="'+esc(employeeName)+'" readonly style="background:var(--light);"></div>'+
+      '<div class="fg"><label class="fl">Pay Period</label><input class="fi" id="po-period" value="'+esc(from)+' to '+esc(to)+'" readonly style="background:var(--light);"></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'+
+        '<div class="fg" style="margin:0;"><label class="fl">Payout Date *</label><input class="fi" type="date" id="po-date" value="'+today+'"></div>'+
+        '<div class="fg" style="margin:0;"><label class="fl">Amount (₱) *</label><input class="fi" type="number" id="po-amount" step="0.01" value="'+amount.toFixed(2)+'"></div>'+
+      '</div>'+
+      '<div class="fg" style="margin:0;"><label class="fl">Payment Method *</label>'+
+        '<select class="fi" id="po-method" onchange="_poToggleRef()">'+
+          '<option value="Cash">💵 Cash</option>'+
+          '<option value="GCash">📱 GCash</option>'+
+          '<option value="Maya">📱 Maya</option>'+
+          '<option value="Bank Transfer">🏦 Bank Transfer</option>'+
+          '<option value="Check">📄 Check</option>'+
+        '</select>'+
+      '</div>'+
+      '<div class="fg" id="po-ref-wrap" style="margin:0;display:none;"><label class="fl">Reference Number</label><input class="fi" id="po-ref" placeholder="Transaction ID / Check #"></div>'+
+      '<div class="fg" style="margin:0;"><label class="fl">Notes (optional)</label><input class="fi" id="po-notes" placeholder="e.g. Includes ₱200 incentive bonus"></div>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">'+
+      '<button class="btn btn-outline" onclick="closeModal()">Cancel</button>'+
+      '<button class="btn btn-t" onclick="savePayout()" id="po-save-btn" style="background:linear-gradient(135deg,#3d8c6e,#2f6d55);color:#fff;">💾 Record Payout</button>'+
+    '</div>'
+  );
+}
+
+function _poToggleRef(){
+  var m = document.getElementById('po-method').value;
+  document.getElementById('po-ref-wrap').style.display = (m === 'Cash') ? 'none' : '';
+}
+
+async function savePayout(){
+  var employee = document.getElementById('po-emp').value;
+  var period   = document.getElementById('po-period').value;
+  var date     = document.getElementById('po-date').value;
+  var amount   = parseFloat(document.getElementById('po-amount').value) || 0;
+  var method   = document.getElementById('po-method').value;
+  var ref      = (document.getElementById('po-ref').value || '').trim();
+  var notes    = (document.getElementById('po-notes').value || '').trim();
+
+  if(!date){ showToast('⚠ Pick a payout date'); return; }
+  if(!amount || amount <= 0){ showToast('⚠ Enter a valid amount'); return; }
+
+  var btn = document.getElementById('po-save-btn');
+  btn.disabled = true; btn.textContent = '💾 Saving…';
+
+  try{
+    var r = await gas('savePayout', {
+      adminPin: ADMIN_PIN_STORED,
+      employee: employee,
+      period: period,
+      date: date,
+      amount: amount,
+      method: method,
+      reference: ref,
+      notes: notes,
+      recordedBy: 'Admin',
+      recordedAt: (todayPHT?todayPHT():'') + ' ' + (timeStrPHT?timeStrPHT(false):'')
+    });
+    if(!r.ok) throw new Error(r.error || 'Save failed');
+    closeModal();
+    showToast('✅ Payout recorded: ₱'+amount.toLocaleString('en-PH')+' via '+method);
+    // Refresh payout history if it's currently shown
+    if(document.getElementById('payout-history-modal')){
+      viewEmpPayoutHistory(employee);
+    }
+  }catch(e){
+    showToast('❌ '+e.message);
+    btn.disabled = false; btn.textContent = '💾 Record Payout';
+  }
+}
+
+async function viewEmpPayoutHistory(employeeName){
+  openModal(
+    '<h3 style="margin:0 0 6px;" id="payout-history-modal">📋 Payout History</h3>'+
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:14px;">'+esc(employeeName)+'</div>'+
+    '<div id="ph-list" style="max-height:400px;overflow-y:auto;">Loading…</div>'+
+    '<div style="display:flex;justify-content:flex-end;margin-top:14px;">'+
+      '<button class="btn btn-outline" onclick="closeModal()">Close</button>'+
+    '</div>'
+  );
+
+  try{
+    var r = await gas('getPayouts', { adminPin: ADMIN_PIN_STORED, employee: employeeName });
+    var box = document.getElementById('ph-list');
+    if(!r.ok) throw new Error(r.error || 'Failed');
+    var payouts = r.payouts || [];
+    if(!payouts.length){
+      box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:12px;">No payouts recorded yet for '+esc(employeeName)+'.</div>';
+      return;
+    }
+    var total = payouts.reduce(function(s,p){ return s + (parseFloat(p.amount)||0); }, 0);
+    box.innerHTML =
+      '<div style="background:var(--light);padding:10px 14px;border-radius:8px;margin-bottom:10px;font-size:12px;">'+
+        '<strong>Total paid:</strong> ₱'+total.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})+
+        ' · <span style="color:var(--muted);">'+payouts.length+' payout'+(payouts.length!==1?'s':'')+'</span>'+
+      '</div>'+
+      '<table class="dtr-table" style="width:100%;font-size:11px;">'+
+        '<thead><tr><th>Date</th><th>Period</th><th>Method</th><th>Amount</th><th>Ref</th><th>Notes</th><th></th></tr></thead>'+
+        '<tbody>'+
+        payouts.map(function(p){
+          var methodEmoji = ({'Cash':'💵','GCash':'📱','Maya':'📱','Bank Transfer':'🏦','Check':'📄'})[p.method] || '💰';
+          return '<tr>'+
+            '<td>'+esc(p.date)+'</td>'+
+            '<td style="font-size:10px;color:var(--muted);">'+esc(p.period||'—')+'</td>'+
+            '<td>'+methodEmoji+' '+esc(p.method)+'</td>'+
+            '<td><strong>₱'+parseFloat(p.amount||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})+'</strong></td>'+
+            '<td style="font-size:10px;">'+esc(p.reference||'—')+'</td>'+
+            '<td style="font-size:10px;color:var(--muted);">'+esc(p.notes||'—')+'</td>'+
+            '<td><button class="btn btn-sm btn-outline" style="color:var(--danger);font-size:9px;padding:2px 6px;" onclick="deletePayout(\''+esc(p.id)+'\',\''+esc(employeeName)+'\')">🗑</button></td>'+
+          '</tr>';
+        }).join('')+
+        '</tbody>'+
+      '</table>';
+  }catch(e){
+    document.getElementById('ph-list').innerHTML = '<div style="color:var(--danger);padding:14px;font-size:12px;">'+esc(e.message)+'</div>';
+  }
+}
+
+async function deletePayout(id, employeeName){
+  if(!confirm('Delete this payout record permanently? This cannot be undone.')) return;
+  try{
+    var r = await gas('deletePayout', { adminPin: ADMIN_PIN_STORED, id: id });
+    if(!r.ok) throw new Error(r.error || 'Delete failed');
+    showToast('🗑 Payout deleted');
+    viewEmpPayoutHistory(employeeName);
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
 async function generateReport(){
   var emp  = document.getElementById('r-emp').value;
   var from = document.getElementById('r-from').value;
@@ -2255,6 +2392,15 @@ function renderReport(report, type, from, to){
         '<table class="dtr-table" style="margin-top:6px;"><thead><tr><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Reason</th></tr></thead><tbody>'+
         emp.leaves.map(function(l){ return '<tr><td>'+l.leaveType+'</td><td>'+l.from+'</td><td>'+l.to+'</td><td>'+l.days+'</td><td>'+l.reason+'</td></tr>'; }).join('')+
         '</tbody></table>';
+    }
+
+    // Payout button — only for payroll type reports
+    if(type === 'payroll' && emp.totalPay > 0){
+      header += '<div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);align-items:center;flex-wrap:wrap;">'+
+        '<button class="btn btn-sm" onclick="openPayoutModal(\''+esc(emp.name)+'\','+emp.totalPay+',\''+from+'\',\''+to+'\')" style="background:linear-gradient(135deg,#3d8c6e,#2f6d55);color:#fff;font-weight:700;">💰 Record Payout</button>'+
+        '<button class="btn btn-sm btn-outline" onclick="viewEmpPayoutHistory(\''+esc(emp.name)+'\')">📋 Payout History</button>'+
+        '<span style="font-size:11px;color:var(--muted);margin-left:auto;">Net: <strong style="color:var(--slate);">₱'+emp.totalPay.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})+'</strong></span>'+
+      '</div>';
     }
 
     html += header+'</div>';
