@@ -209,6 +209,66 @@ button:disabled{opacity:.5;cursor:default;}
     <div class="login-err" id="login-err"></div>
   </div>
   <div class="admin-link" onclick="adminLogin()">🔐 Admin Access</div>
+
+  <!-- ═══ QUICK TASK TIMER — no full login needed ═══ -->
+  <div style="margin-top:20px;padding:16px;background:rgba(255,255,255,.06);border:1px solid rgba(215,144,104,.2);border-radius:12px;max-width:420px;margin-left:auto;margin-right:auto;color:#f5f0e8;">
+    <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:#d79068;margin-bottom:4px;">⏱ Quick Task Timer</div>
+    <div style="font-size:10px;color:rgba(245,240,232,.55);margin-bottom:12px;">Start a task without logging in. Multiple staff can run timers at the same time.</div>
+
+    <div style="display:grid;gap:8px;">
+      <select id="qt-name" class="fi" style="width:100%;padding:9px 10px;font-size:12px;background:rgba(0,0,0,.2);color:#f5f0e8;border:1px solid rgba(255,255,255,.15);border-radius:8px;">
+        <option value="">— Your name —</option>
+      </select>
+      <input type="password" inputmode="numeric" maxlength="4" id="qt-pin" placeholder="4-digit PIN"
+        style="width:100%;padding:9px 10px;font-size:13px;background:rgba(0,0,0,.2);color:#f5f0e8;border:1px solid rgba(255,255,255,.15);border-radius:8px;text-align:center;letter-spacing:6px;box-sizing:border-box;">
+      <select id="qt-task" class="fi" onchange="_qtToggleDetail()" style="width:100%;padding:9px 10px;font-size:12px;background:rgba(0,0,0,.2);color:#f5f0e8;border:1px solid rgba(255,255,255,.15);border-radius:8px;">
+        <option value="">— Task —</option>
+        <optgroup label="🎨 Editing & Production" style="color:#333;">
+          <option value="Photo Editing">Photo Editing</option>
+          <option value="Video Editing">Video Editing</option>
+          <option value="File Organization">File Organization</option>
+          <option value="Backup & Upload">Backup &amp; Upload</option>
+        </optgroup>
+        <optgroup label="📸 Self-Shoot Sessions" style="color:#333;">
+          <option value="Snapshot Selfie">Snapshot Selfie</option>
+          <option value="Tribe Time">Tribe Time</option>
+          <option value="Crowd Cam">Crowd Cam</option>
+          <option value="Crew Captures">Crew Captures</option>
+          <option value="Frenzy Snaps Birthday">Frenzy Snaps Birthday</option>
+          <option value="Party Clicks Birthday">Party Clicks Birthday</option>
+          <option value="Click Capture Birthday">Click Capture Birthday</option>
+        </optgroup>
+        <optgroup label="📷 Photographer" style="color:#333;">
+          <option value="Photographer Session">Photographer Session</option>
+          <option value="Studio Rental">Studio Rental</option>
+        </optgroup>
+        <optgroup label="🎉 Events & Rentals" style="color:#333;">
+          <option value="Event Booking">Event Booking</option>
+          <option value="Booth Rental">Booth Rental</option>
+        </optgroup>
+        <optgroup label="🛠 Studio Operations" style="color:#333;">
+          <option value="Client Communication">Client Communication</option>
+          <option value="Booking Management">Booking Management</option>
+          <option value="Equipment Maintenance">Equipment Maintenance</option>
+          <option value="Cleaning & Setup">Cleaning &amp; Setup</option>
+          <option value="Inventory Check">Inventory Check</option>
+          <option value="Marketing & Social Media">Marketing &amp; Social Media</option>
+          <option value="Admin Tasks">Admin Tasks</option>
+          <option value="Other">Other (specify below)</option>
+        </optgroup>
+      </select>
+      <input type="text" id="qt-detail" placeholder="Optional detail (client name, batch, etc.)"
+        style="display:none;width:100%;padding:9px 10px;font-size:12px;background:rgba(0,0,0,.2);color:#f5f0e8;border:1px solid rgba(255,255,255,.15);border-radius:8px;box-sizing:border-box;">
+      <button onclick="qtStartTimer()"
+        style="width:100%;padding:11px;background:linear-gradient(135deg,#51897d,#3d6b62);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;letter-spacing:.5px;">
+        ▶ Start Timer
+      </button>
+    </div>
+
+    <!-- Live list of active timers -->
+    <div id="qt-active-list" style="margin-top:14px;"></div>
+  </div>
+
   <div style="color:rgba(245,240,232,.25);font-size:10px;text-align:center;margin-top:12px;cursor:pointer;" onclick="resetTracker()">⚙ Reset settings</div>
 </div>
 
@@ -1092,7 +1152,191 @@ async function loadStaffNames(){
     var sel = document.getElementById('login-name');
     sel.innerHTML = '<option value="">— choose name —</option>' +
       STAFF_LIST.map(function(s){ return '<option value="'+s.name+'">'+s.name+' ('+s.role+')</option>'; }).join('');
+    // Also populate the quick task timer name dropdown
+    var qtSel = document.getElementById('qt-name');
+    if(qtSel){
+      qtSel.innerHTML = '<option value="">— Your name —</option>' +
+        STAFF_LIST.map(function(s){ return '<option value="'+s.name+'">'+s.name+'</option>'; }).join('');
+    }
   }catch(e){ document.getElementById('login-name').innerHTML='<option>⚠ '+e.message+'</option>'; }
+  qtRenderActiveList();
+}
+
+// ════════════════════════════════════════════════════════════
+//  QUICK TASK TIMER (login page) — multiple staff simultaneously
+// ════════════════════════════════════════════════════════════
+// Storage: each active timer lives at localStorage['tc_task_<Name>']
+// This lets any number of staff run timers at once from the same device.
+
+function _qtToggleDetail(){
+  var v = document.getElementById('qt-task').value;
+  document.getElementById('qt-detail').style.display = (v === 'Other') ? '' : 'none';
+}
+
+function _qtAllActive(){
+  // Scan localStorage for all tc_task_* keys
+  var results = [];
+  for(var i = 0; i < localStorage.length; i++){
+    var key = localStorage.key(i);
+    if(key && key.indexOf('tc_task_') === 0 && key !== 'tc_task_'){
+      try{
+        var val = JSON.parse(localStorage.getItem(key));
+        if(val && val.startTime){
+          results.push({
+            key: key,
+            name: key.substring(8),
+            task: val.name,
+            startTime: val.startTime,
+            startedDisplay: val.startedDisplay,
+            pin: val.pin || ''
+          });
+        }
+      }catch(e){}
+    }
+  }
+  return results.sort(function(a,b){ return a.startTime - b.startTime; });
+}
+
+async function qtStartTimer(){
+  var name = document.getElementById('qt-name').value;
+  var pin  = document.getElementById('qt-pin').value.trim();
+  var task = document.getElementById('qt-task').value;
+  var detail = document.getElementById('qt-detail').value.trim();
+
+  if(!name){ alert('⚠ Pick your name'); return; }
+  if(!pin || pin.length !== 4){ alert('⚠ Enter your 4-digit PIN'); return; }
+  if(!task){ alert('⚠ Pick a task'); return; }
+
+  // Check if this staff already has a running timer
+  var existing = localStorage.getItem('tc_task_' + name);
+  if(existing){
+    var e = null; try{ e = JSON.parse(existing); }catch(err){}
+    if(e && e.startTime){
+      if(!confirm(name + ' already has a running timer for "' + e.name + '" (started ' + e.startedDisplay + '). Replace it?')){
+        return;
+      }
+    }
+  }
+
+  // Verify PIN by asking the server
+  try{
+    var r = await gas('getMyData', { name: name, pin: pin });
+    if(!r.ok) throw new Error(r.error || 'Invalid PIN');
+  }catch(err){
+    alert('❌ ' + err.message);
+    return;
+  }
+
+  var taskName = task === 'Other' && detail ? detail : (detail ? task + ' — ' + detail : task);
+  var startedDisplay = timeStrPHT ? timeStrPHT(true) : new Date().toLocaleTimeString();
+
+  var session = {
+    name: taskName,
+    startTime: Date.now(),
+    startedDisplay: startedDisplay,
+    pin: pin // stored so we can re-authenticate on save
+  };
+  localStorage.setItem('tc_task_' + name, JSON.stringify(session));
+
+  // Clear form
+  document.getElementById('qt-pin').value = '';
+  document.getElementById('qt-task').value = '';
+  document.getElementById('qt-detail').value = '';
+  document.getElementById('qt-detail').style.display = 'none';
+
+  qtRenderActiveList();
+}
+
+function qtRenderActiveList(){
+  var box = document.getElementById('qt-active-list');
+  if(!box) return;
+  var active = _qtAllActive();
+
+  if(!active.length){
+    box.innerHTML = '';
+    if(_qtTick){ clearInterval(_qtTick); _qtTick = null; }
+    return;
+  }
+
+  var html = '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:rgba(245,240,232,.55);margin-bottom:6px;">🔴 Running Timers (' + active.length + ')</div>';
+  html += active.map(function(a){
+    return '<div style="background:rgba(0,0,0,.25);border-left:3px solid #51897d;border-radius:8px;padding:9px 11px;margin-bottom:6px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-size:13px;font-weight:800;color:#f5f0e8;">👤 ' + esc(a.name) + '</div>' +
+          '<div style="font-size:11px;color:rgba(245,240,232,.7);margin-top:2px;">' + esc(a.task) + '</div>' +
+          '<div style="font-size:10px;color:rgba(245,240,232,.5);margin-top:2px;">' +
+            '⏱ <span class="qt-elapsed" data-key="' + esc(a.key) + '" data-start="' + a.startTime + '" style="font-family:ui-monospace,monospace;font-weight:700;color:#d79068;">00:00:00</span>' +
+            ' · started ' + esc(a.startedDisplay) +
+          '</div>' +
+        '</div>' +
+        '<button onclick="qtStopTimer(\'' + esc(a.name) + '\')" style="background:linear-gradient(135deg,#c0544a,#a63d34);color:#fff;border:none;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">⏹ Stop</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  box.innerHTML = html;
+
+  // Start ticker if not running
+  if(!_qtTick){
+    _qtTick = setInterval(_qtTickAll, 1000);
+    _qtTickAll();
+  }
+}
+
+var _qtTick = null;
+
+function _qtTickAll(){
+  document.querySelectorAll('.qt-elapsed').forEach(function(el){
+    var start = parseInt(el.dataset.start);
+    if(!start) return;
+    var elapsed = Date.now() - start;
+    var h = Math.floor(elapsed / 3600000);
+    var m = Math.floor((elapsed % 3600000) / 60000);
+    var s = Math.floor((elapsed % 60000) / 1000);
+    el.textContent = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  });
+}
+
+async function qtStopTimer(name){
+  var raw = localStorage.getItem('tc_task_' + name);
+  if(!raw){ qtRenderActiveList(); return; }
+  var saved; try{ saved = JSON.parse(raw); }catch(e){ return; }
+  if(!saved || !saved.startTime){ return; }
+
+  if(!confirm('Stop the "' + saved.name + '" timer for ' + name + ' and save the session?')) return;
+
+  var endTime = Date.now();
+  var durationMs = endTime - saved.startTime;
+  var durationMin = Math.round(durationMs / 60000 * 10) / 10;
+  if(durationMin < 0.1){
+    if(!confirm('This timer ran for less than 6 seconds. Save anyway?')) return;
+  }
+
+  var endedDisplay = timeStrPHT ? timeStrPHT(true) : new Date().toLocaleTimeString();
+  var dateStr = todayPHT ? todayPHT() : new Date().toISOString().slice(0,10);
+
+  var session = {
+    name: name,
+    pin: saved.pin || '',
+    employee: name,
+    task: saved.name,
+    startedAt: saved.startedDisplay,
+    endedAt: endedDisplay,
+    date: dateStr,
+    durationMin: durationMin,
+    durationDisplay: _formatDuration(durationMs)
+  };
+
+  try{
+    var r = await gas('saveTaskSession', session);
+    if(!r.ok) throw new Error(r.error || 'Save failed');
+    // Clear the persisted timer
+    localStorage.removeItem('tc_task_' + name);
+    alert('✅ Saved ' + session.durationDisplay + ' on "' + session.task + '" for ' + name);
+    qtRenderActiveList();
+  }catch(e){
+    alert('❌ ' + e.message + '\n\nTimer kept running so you can try again.');
+  }
 }
 
 // ════════════════════════════════════════
@@ -1125,6 +1369,7 @@ function doLogout(){
   CURR_USER=null;CURR_PIN='';IS_ADMIN=false;
   var pinEl=document.getElementById('login-pin'); if(pinEl) pinEl.value='';
   showView('login-view');loadStaffNames();
+  qtRenderActiveList();
 }
 
 function showStaffView(){
