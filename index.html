@@ -98,11 +98,17 @@ button:disabled{opacity:.5;cursor:default;}
 /* ════ ADMIN VIEW ════ */
 .admin-top{background:var(--dark);padding:14px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;}
 .admin-top h1{color:var(--cream);font-size:15px;font-weight:700;flex:1;}
-.logout-btn{background:rgba(255,255,255,.1);border:none;color:var(--cream);padding:7px 14px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;}
+.logout-btn{background:linear-gradient(135deg,#c0544a,#a63d34);border:none;color:#fff;padding:11px 22px;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:.4px;box-shadow:0 3px 10px rgba(192,84,74,.35);transition:transform .12s,box-shadow .12s;}
+.logout-btn:hover{transform:translateY(-1px);box-shadow:0 5px 14px rgba(192,84,74,.45);}
+.logout-btn:active{transform:translateY(0);}
 .admin-tabs{display:flex;overflow-x:auto;border-bottom:2px solid var(--border);background:var(--white);position:sticky;top:52px;z-index:99;}
 .atab{padding:10px 16px;font-size:11px;font-weight:600;color:var(--muted);border:none;background:none;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent;margin-bottom:-2px;}
 .atab.on{color:var(--teal);border-bottom-color:var(--teal);}
-.atab .badge-n{font-size:9px;background:var(--danger);color:#fff;border-radius:8px;padding:1px 5px;margin-left:3px;}
+.atab .badge-n,.stab .badge-n{display:inline-block;font-size:10px;background:linear-gradient(135deg,#e74c3c,#c0392b);color:#fff;border-radius:11px;padding:2px 7px;margin-left:5px;font-weight:800;min-width:18px;text-align:center;box-shadow:0 2px 6px rgba(231,76,60,.5);animation:badgePulse 1.8s ease-in-out infinite;}
+@keyframes badgePulse{
+  0%,100%{transform:scale(1);box-shadow:0 2px 6px rgba(231,76,60,.5);}
+  50%{transform:scale(1.15);box-shadow:0 3px 12px rgba(231,76,60,.75);}
+}
 .ac{max-width:1200px;margin:0 auto;padding:14px 16px;}
 
 /* Admin cards */
@@ -218,7 +224,7 @@ button:disabled{opacity:.5;cursor:default;}
     <div style="text-align:center;">
       <div class="live-clock"><div class="time" id="s-clock">—</div><div class="date" id="s-date">—</div><div style="font-size:9px;font-weight:600;color:rgba(215,144,104,.65);letter-spacing:1.5px;margin-top:2px;">PHT · MANILA</div></div>
     </div>
-    <button class="logout-btn" onclick="doLogout()">← Out</button>
+    <button class="logout-btn" onclick="doLogout()">🚪 Logout</button>
   </div>
 
   <div class="staff-body">
@@ -383,7 +389,7 @@ button:disabled{opacity:.5;cursor:default;}
   <div class="admin-top">
     <h1>⏱ TimeCommand Admin</h1>
     <span style="color:rgba(245,240,232,.4);font-size:10px;" id="a-sync-status"></span>
-    <button class="logout-btn" onclick="doLogout()">← Logout</button>
+    <button class="logout-btn" onclick="doLogout()">🚪 Logout</button>
   </div>
   <div class="admin-tabs">
     <button class="atab on" onclick="aTab('dash')" id="atab-dash">📊 Dashboard</button>
