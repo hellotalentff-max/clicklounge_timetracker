@@ -1112,6 +1112,16 @@ function doLogout(){
   // Keep the persisted timer (localStorage) so it survives — just stop the UI tick.
   _taskSession = null;
   if(_taskTickInt){ clearInterval(_taskTickInt); _taskTickInt = null; }
+
+  // Clear ALL user-specific DOM so the next login on this device
+  // doesn't see the previous user's notes, evaluations, tasks, etc.
+  ['s-my-notes','s-eval-content','s-profile-content','s-panel-content','s-records-content','s-leave-content','s-tasks-content','task-current-name','task-started-at','task-elapsed'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.innerHTML = '';
+  });
+  var badge = document.getElementById('eval-note-badge');
+  if(badge){ badge.style.display = 'none'; badge.textContent = ''; }
+
   CURR_USER=null;CURR_PIN='';IS_ADMIN=false;
   var pinEl=document.getElementById('login-pin'); if(pinEl) pinEl.value='';
   showView('login-view');loadStaffNames();
@@ -1247,16 +1257,20 @@ function _evalNotesReadKey(){ return 'tc_eval_notes_read_' + ((CURR_USER && CURR
 async function loadMyNotes(){
   var box = document.getElementById('s-my-notes');
   if(!box || !CURR_USER) return;
+  box.innerHTML = ''; // clear any stale content from a previous user
   try{
     var r = await gas('getMyEvalNotes', { name: CURR_USER.name, pin: CURR_PIN });
     if(!r.ok || !r.notes || !r.notes.length){
-      box.innerHTML = '';
       updateEvalNoteBadge(0);
       return;
     }
-    var open = r.notes.filter(function(n){ return n.status === 'open'; });
+    // DEFENSIVE: re-filter client-side so this user can ONLY ever see their own notes
+    var myNameL = String(CURR_USER.name||'').trim().toLowerCase();
+    var mine = r.notes.filter(function(n){
+      return String(n.employee||'').trim().toLowerCase() === myNameL;
+    });
+    var open = mine.filter(function(n){ return n.status === 'open'; });
     if(!open.length){
-      box.innerHTML = '';
       updateEvalNoteBadge(0);
       return;
     }
@@ -1309,7 +1323,12 @@ async function checkEvalNotesBadge(){
   try{
     var r = await gas('getMyEvalNotes', { name: CURR_USER.name, pin: CURR_PIN });
     if(!r.ok || !r.notes) return;
-    var open = r.notes.filter(function(n){ return n.status === 'open'; });
+    // DEFENSIVE: only count notes assigned to THIS user
+    var myNameL = String(CURR_USER.name||'').trim().toLowerCase();
+    var mine = r.notes.filter(function(n){
+      return String(n.employee||'').trim().toLowerCase() === myNameL;
+    });
+    var open = mine.filter(function(n){ return n.status === 'open'; });
     var lastRead = localStorage.getItem(_evalNotesReadKey()) || '2000-01-01';
     var unread = open.filter(function(n){ return String(n.createdAt||'') > lastRead; }).length;
     updateEvalNoteBadge(unread);
