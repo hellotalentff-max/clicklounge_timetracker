@@ -2409,11 +2409,13 @@ function renderReport(report, type, from, to){
         '</tbody></table>';
     }
 
-    // Payout button — only for payroll type reports
-    if(type === 'payroll' && emp.totalPay > 0){
+    // Payout button — for payroll and DTR reports
+    if((type === 'payroll' || type === 'dtr') && emp.totalPay > 0){
+      // Safe-encode the name for use inside a JS string in HTML attribute
+      var safeName = String(emp.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
       header += '<div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);align-items:center;flex-wrap:wrap;">'+
-        '<button class="btn btn-sm" onclick="openPayoutModal(\''+esc(emp.name)+'\','+emp.totalPay+',\''+from+'\',\''+to+'\')" style="background:linear-gradient(135deg,#3d8c6e,#2f6d55);color:#fff;font-weight:700;">💰 Record Payout</button>'+
-        '<button class="btn btn-sm btn-outline" onclick="viewEmpPayoutHistory(\''+esc(emp.name)+'\')">📋 Payout History</button>'+
+        '<button class="btn btn-sm" onclick="openPayoutModal(\''+safeName+'\','+emp.totalPay+',\''+from+'\',\''+to+'\')" style="background:linear-gradient(135deg,#3d8c6e,#2f6d55);color:#fff;font-weight:700;border:none;cursor:pointer;">💰 Record Payout</button>'+
+        '<button class="btn btn-sm btn-outline" onclick="viewEmpPayoutHistory(\''+safeName+'\')" style="cursor:pointer;">📋 Payout History</button>'+
         '<span style="font-size:11px;color:var(--muted);margin-left:auto;">Net: <strong style="color:var(--slate);">₱'+emp.totalPay.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})+'</strong></span>'+
       '</div>';
     }
