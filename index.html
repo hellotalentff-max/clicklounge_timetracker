@@ -956,6 +956,14 @@ button:disabled{opacity:.5;cursor:default;}
 
 <!-- ── Performance Review Modal ── -->
 <div class="pm-bg" id="review-bg" onclick="if(event.target===this)closeReviewModal()">
+  <div class="pm" style="max-width:720px;max-height:92vh;overflow-y:auto;">
+    <div class="pm-h" style="position:sticky;top:0;z-index:2;">
+      <span>⭐ Review Evaluation</span>
+      <button onclick="closeReviewModal()" style="background:rgba(255,255,255,.12);border:none;color:var(--cream);border-radius:6px;padding:4px 10px;cursor:pointer;">✕</button>
+    </div>
+    <div class="pm-b" id="review-body"></div>
+  </div>
+</div>
 
 <!-- ── Generic Modal (used by payout, etc.) ── -->
 <div class="pm-bg" id="generic-modal-bg" onclick="if(event.target===this)closeModal()">
@@ -965,14 +973,6 @@ button:disabled{opacity:.5;cursor:default;}
       <button onclick="closeModal()" style="background:rgba(255,255,255,.12);border:none;color:var(--cream);border-radius:6px;padding:4px 10px;cursor:pointer;">✕</button>
     </div>
     <div class="pm-b" id="generic-modal-body" style="padding:16px;"></div>
-  </div>
-</div>
-  <div class="pm" style="max-width:720px;max-height:92vh;overflow-y:auto;">
-    <div class="pm-h" style="position:sticky;top:0;z-index:2;">
-      <span>⭐ Review Evaluation</span>
-      <button onclick="closeReviewModal()" style="background:rgba(255,255,255,.12);border:none;color:var(--cream);border-radius:6px;padding:4px 10px;cursor:pointer;">✕</button>
-    </div>
-    <div class="pm-b" id="review-body"></div>
   </div>
 </div>
 
