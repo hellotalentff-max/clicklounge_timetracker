@@ -524,6 +524,11 @@ button:disabled{opacity:.5;cursor:default;}
           <div class="fg"><label class="fl">Employee</label>
             <select class="fi" id="r-emp"><option value="">All Employees</option></select>
           </div>
+          <div class="fg"><label class="fl">Pay Period</label>
+            <select class="fi" id="r-period" onchange="applyPayPeriod()">
+              <option value="custom">Custom range…</option>
+            </select>
+          </div>
           <div class="fg"><label class="fl">Date From</label><input class="fi" type="date" id="r-from"></div>
           <div class="fg"><label class="fl">Date To</label><input class="fi" type="date" id="r-to"></div>
           <div class="fg"><label class="fl">Report Type</label>
@@ -998,6 +1003,49 @@ button:disabled{opacity:.5;cursor:default;}
   </div>
 </div>
 
+<!-- ── Applicant Email Modal ── -->
+<div class="pm-bg" id="ae-modal-bg" onclick="if(event.target===this)closeApplicantEmailModal()">
+  <div class="pm" style="max-width:480px;">
+    <div class="pm-h">
+      <span>📧 Email <span id="ae-name"></span></span>
+      <button onclick="closeApplicantEmailModal()" style="background:rgba(255,255,255,.12);border:none;color:var(--cream);border-radius:6px;padding:4px 10px;cursor:pointer;">✕</button>
+    </div>
+    <div class="pm-b">
+      <input type="hidden" id="ae-id">
+      <input type="hidden" id="ae-email">
+      <div class="fg" style="margin-bottom:14px;">
+        <label class="fl">Template</label>
+        <select class="fi" id="ae-template" onchange="onApplicantEmailTemplateChange()">
+          <option value="interview">🗓 Interview Invitation</option>
+          <option value="decline">✗ Decline — Position Unavailable</option>
+          <option value="missinginfo">📋 Missing Information Needed</option>
+        </select>
+      </div>
+
+      <div id="ae-fields-interview">
+        <div class="aform-grid">
+          <div class="fg"><label class="fl">Interview Date</label><input class="fi" type="date" id="ae-int-date"></div>
+          <div class="fg"><label class="fl">Interview Time</label><input class="fi" type="time" id="ae-int-time"></div>
+        </div>
+        <div class="fg"><label class="fl">Location / Notes (optional)</label><input class="fi" id="ae-int-notes" placeholder="e.g. ClickLounge Studio, bring valid ID"></div>
+      </div>
+
+      <div id="ae-fields-missinginfo" style="display:none;">
+        <div class="fg"><label class="fl">What's missing?</label>
+          <textarea class="fi" id="ae-missing-notes" rows="3" placeholder="e.g. Valid ID, resume, SSS number"></textarea>
+        </div>
+      </div>
+
+      <div style="background:var(--light);border-radius:8px;padding:10px 12px;font-size:11px;color:var(--muted);margin-top:4px;" id="ae-preview"></div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+        <button class="btn" onclick="closeApplicantEmailModal()">Cancel</button>
+        <button class="btn btn-t" id="ae-send-btn" onclick="sendApplicantEmail()">📧 Send Email</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Compare Applicants Modal — side-by-side table ── -->
 <div class="pm-bg" id="compare-bg" onclick="if(event.target===this)closeCompareModal()">
   <div class="pm" style="max-width:96vw;width:96vw;max-height:96vh;overflow-y:auto;">
@@ -1135,7 +1183,13 @@ async function adminLogin(){
       // If GAS URL is set, try to load real data in the background
       if(GAS_URL){
         gas('getAdminData', {adminPin:pin}).then(function(r){
-          if(r && r.ok){ ADMIN_DATA = r; renderAdminDash(); }
+          if(r && r.ok){
+            ADMIN_DATA = r;
+            renderAdminDash();
+            autoApproveEligibleOT().then(function(changed){
+              if(changed) refreshAdminData();
+            });
+          }
         }).catch(function(){});
       }
       return;
@@ -2035,7 +2089,7 @@ function aTab(id){
   if(id === 'applicants') renderApplicants();
   if(id === 'perf'){ perfInit(); loadReviews(); }
   if(id === 'requests') reqSub('ot');
-  if(id === 'reports'){ try{ populateReportEmpSelect(); }catch(e){} }
+  if(id === 'reports'){ try{ populateReportEmpSelect(); }catch(e){} try{ populatePayPeriods(); }catch(e){} }
 }
 
 // Sub-tabs inside the Requests panel (OT / Leave / Holidays)
@@ -2128,6 +2182,20 @@ function renderLeaveList(){
           '<button class="btn btn-d btn-sm" onclick="denyLeave(\''+l.id+'\')">✗</button>'+
         '</td></tr>';
     }).join('')+'</tbody></table>';
+}
+
+var OT_AUTO_APPROVE_MAX_HRS = 1.5;
+async function autoApproveEligibleOT(){
+  var eligible = (ADMIN_DATA.pendingOT||[]).filter(function(l){
+    var h = parseFloat(l.otHrs||0);
+    return h > 0 && h <= OT_AUTO_APPROVE_MAX_HRS;
+  });
+  if(!eligible.length) return false;
+  for(var i=0; i<eligible.length; i++){
+    try{ await gas('approveOT', {adminPin:ADMIN_PIN_STORED, logId:eligible[i].id}); }
+    catch(e){ console.error('Auto-approve OT failed for', eligible[i].id, e); }
+  }
+  return true;
 }
 
 async function approveOT(id){
@@ -2346,6 +2414,85 @@ async function deletePayoutById(id, employeeName){
   }catch(e){ showToast('❌ '+e.message); }
 }
 
+// ════════════════════════════════════════
+//  PAY PERIOD SCHEDULE — fixed semi-monthly cutoffs, paid on the 15th and 30th.
+//  A 31st (when a month has one) has no payday of its own on the fixed 15/30
+//  schedule, so it's folded forward into the START of the following 1–15
+//  period rather than being dropped or attached to the 16–30 period.
+// ════════════════════════════════════════
+var PP_MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function ppLastDayOfMonth(year, month1based){ return new Date(year, month1based, 0).getDate(); }
+function ppDateStr(year, month1based, day){ return year+'-'+String(month1based).padStart(2,'0')+'-'+String(day).padStart(2,'0'); }
+
+// half: 1 = pays on the 15th (covers 1–15, plus a folded-in 31st from the previous month)
+//       2 = pays on the 30th (covers 16–30, or 16–end for short months like Feb)
+function getPayPeriod(year, month1based, half){
+  if(half===1){
+    var prevMonth = month1based-1, prevYear = year;
+    if(prevMonth===0){ prevMonth=12; prevYear=year-1; }
+    var prevLastDay = ppLastDayOfMonth(prevYear, prevMonth);
+    var from = prevLastDay===31 ? ppDateStr(prevYear, prevMonth, 31) : ppDateStr(year, month1based, 1);
+    var to = ppDateStr(year, month1based, 15);
+    return { from:from, to:to, payDate:to,
+      label: PP_MONTH_NAMES[month1based-1]+' 1–15, '+year+(prevLastDay===31?' (incl. '+PP_MONTH_NAMES[prevMonth-1]+' 31)':'')+' · pay '+PP_MONTH_NAMES[month1based-1]+' 15' };
+  } else {
+    var lastDay = ppLastDayOfMonth(year, month1based);
+    var cutoffDay = Math.min(lastDay, 30);
+    var from = ppDateStr(year, month1based, 16);
+    var to = ppDateStr(year, month1based, cutoffDay);
+    return { from:from, to:to, payDate:to,
+      label: PP_MONTH_NAMES[month1based-1]+' 16–'+cutoffDay+', '+year+' · pay '+PP_MONTH_NAMES[month1based-1]+' '+cutoffDay };
+  }
+}
+
+// Builds a chronological list of pay periods spanning `monthsBack` to `monthsFwd`
+// months around today, and flags which one today actually falls in.
+function ppGeneratePeriods(monthsBack, monthsFwd){
+  var today = todayPHT();
+  var baseYear = parseInt(today.slice(0,4));
+  var baseMonth = parseInt(today.slice(5,7));
+  var periods = [];
+  for(var offset=-monthsBack; offset<=monthsFwd; offset++){
+    var d = new Date(baseYear, baseMonth-1+offset, 1);
+    var y = d.getFullYear(), m = d.getMonth()+1;
+    [1,2].forEach(function(half){
+      var p = getPayPeriod(y, m, half);
+      p.isCurrent = (today>=p.from && today<=p.to);
+      periods.push(p);
+    });
+  }
+  // A day-31 rolls into next month's period-1 "from" date, which can make that
+  // period's from < the previous period's to when sorted purely by (y,m,half) —
+  // sort by actual from/to instead so the list always reads chronologically.
+  periods.sort(function(a,b){ return a.from.localeCompare(b.from); });
+  return periods;
+}
+
+function populatePayPeriods(){
+  var sel = document.getElementById('r-period');
+  if(!sel || sel.dataset.filled) return; // only build the list once per page load
+  sel.dataset.filled = '1';
+  var periods = ppGeneratePeriods(2, 2);
+  var opts = '<option value="custom">Custom range…</option>';
+  periods.forEach(function(p, i){
+    opts += '<option value="'+i+'" data-from="'+p.from+'" data-to="'+p.to+'"'+(p.isCurrent?' selected':'')+'>'+
+      (p.isCurrent?'⭐ ':'')+p.label+'</option>';
+  });
+  sel.innerHTML = opts;
+  window._ppPeriods = periods;
+  applyPayPeriod();
+}
+
+function applyPayPeriod(){
+  var sel = document.getElementById('r-period');
+  var idx = sel.value;
+  if(idx==='custom') return; // leave From/To as whatever the user has set manually
+  var p = window._ppPeriods[parseInt(idx)];
+  if(!p) return;
+  document.getElementById('r-from').value = p.from;
+  document.getElementById('r-to').value = p.to;
+}
+
 async function generateReport(){
   var emp  = document.getElementById('r-emp').value;
   var from = document.getElementById('r-from').value;
@@ -2362,15 +2509,25 @@ async function generateReport(){
 
 function renderReport(report, type, from, to){
   var el = document.getElementById('a-report-output');
-  var html = '';
+  var html = '<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">'+
+    '<button class="btn btn-t btn-sm" onclick="emailAllReports()">📧 Email All Reports</button>'+
+  '</div>';
+  window._ppLastReport = { report:report, type:type, from:from, to:to };
   report.forEach(function(emp){
     if(!emp.logs.length && !emp.leaves.length) return;
+    var staffRec = (ADMIN_DATA.staff||[]).find(function(s){ return s.name===emp.name; });
+    var empEmail = staffRec ? (staffRec.email||'') : '';
     var header = '<div class="report-card">'+
-      '<div class="report-name">'+emp.name+' — '+emp.role+' ('+emp.type+')</div>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
+        '<div class="report-name">'+emp.name+' — '+emp.role+' ('+emp.type+')</div>'+
+        '<button class="btn btn-sm" '+(empEmail?'':'disabled title="No email on file for this employee"')+
+          ' onclick="emailPayrollReport(\''+emp.name.replace(/'/g,"\\'")+'\')">📧 Email Report</button>'+
+      '</div>'+
       '<div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap;">'+
         '<div style="font-size:11px;"><strong>Period:</strong> '+from+' to '+to+'</div>'+
         '<div style="font-size:11px;"><strong>Rate:</strong> ₱'+parseFloat(emp.rate||0).toLocaleString()+'/hr</div>'+
         '<div style="font-size:11px;"><strong>Leave taken:</strong> '+emp.leaveDays+' day(s)</div>'+
+        (empEmail?'<div style="font-size:11px;color:var(--muted);">✉ '+empEmail+'</div>':'<div style="font-size:11px;color:var(--danger);">⚠ no email on file</div>')+
       '</div>';
 
     if(type==='dtr' || type==='payroll'){
@@ -2424,6 +2581,44 @@ function renderReport(report, type, from, to){
   });
   el.innerHTML = html || '<p style="color:var(--muted);padding:16px;">No records found for selected period.</p>';
   showToast('✅ Report generated');
+}
+
+// Emails one employee's already-generated payroll report to their address on file.
+async function emailPayrollReport(name){
+  var data = window._ppLastReport;
+  if(!data) return;
+  var staffRec = (ADMIN_DATA.staff||[]).find(function(s){ return s.name===name; });
+  var email = staffRec ? (staffRec.email||'') : '';
+  if(!email){ showToast('⚠ No email on file for '+name); return; }
+  showToast('Sending report to '+email+'…');
+  try{
+    var r = await gas('sendPayrollReport', {adminPin:ADMIN_PIN_STORED, employee:name, email:email, from:data.from, to:data.to, type:data.type});
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ Report sent to '+email);
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function emailAllReports(){
+  var data = window._ppLastReport;
+  if(!data){ showToast('Generate a report first.'); return; }
+  var recipients = data.report.filter(function(emp){
+    if(!emp.logs.length && !emp.leaves.length) return false;
+    var staffRec = (ADMIN_DATA.staff||[]).find(function(s){ return s.name===emp.name; });
+    return staffRec && staffRec.email;
+  });
+  if(!recipients.length){ showToast('No employees with an email on file in this report.'); return; }
+  if(!confirm('Send payroll reports to '+recipients.length+' employee(s) via email?')) return;
+  showToast('Sending '+recipients.length+' report(s)…');
+  var sent=0, failed=0;
+  for(var i=0; i<recipients.length; i++){
+    var emp = recipients[i];
+    var staffRec = (ADMIN_DATA.staff||[]).find(function(s){ return s.name===emp.name; });
+    try{
+      var r = await gas('sendPayrollReport', {adminPin:ADMIN_PIN_STORED, employee:emp.name, email:staffRec.email, from:data.from, to:data.to, type:data.type});
+      if(r.ok) sent++; else failed++;
+    }catch(e){ failed++; }
+  }
+  showToast((failed?'⚠ ':'✅ ')+'Sent '+sent+' report(s)'+(failed?', '+failed+' failed':''));
 }
 
 // ── EMPLOYEES ──
@@ -2912,6 +3107,7 @@ function renderApplicants(){
         '</div>'+
         '<div style="display:flex;gap:6px;" onclick="event.stopPropagation()">'+
           '<button class="btn btn-sm" onclick="openApplicantDetail(\''+escAttr(a.id)+'\')">👁 View Details</button>'+
+          '<button class="btn btn-sm" onclick="openApplicantEmailModal(\''+escAttr(a.id)+'\')" '+(a.email?'':'disabled title="No email on file"')+'>📧 Email</button>'+
           '<button class="btn btn-t btn-sm" onclick="openApproveApplicantModal(\''+escAttr(a.id)+'\')">✅ Approve</button>'+
           '<button class="btn btn-d btn-sm" onclick="rejectApplicant(\''+escAttr(a.id)+'\',\''+escAttr(a.name)+'\')">✗ Reject</button>'+
         '</div>'+
@@ -3088,6 +3284,7 @@ function openApplicantDetail(id){
 
     '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">'+
       '<button class="btn btn-d btn-sm" onclick="closeApplicantDetail();rejectApplicant(\''+escAttr(a.id)+'\',\''+escAttr(a.name)+'\')">✗ Reject</button>'+
+      '<button class="btn btn-sm" onclick="closeApplicantDetail();openApplicantEmailModal(\''+escAttr(a.id)+'\')" '+(a.email?'':'disabled title="No email on file"')+'>📧 Email</button>'+
       '<button class="btn" onclick="closeApplicantDetail()">Close</button>'+
       '<button class="btn btn-t" onclick="closeApplicantDetail();openApproveApplicantModal(\''+escAttr(a.id)+'\')">✅ Approve Application</button>'+
     '</div>';
@@ -3099,6 +3296,75 @@ function openApplicantDetail(id){
 
 function closeApplicantDetail(){
   document.getElementById('applicant-detail-bg').classList.remove('open');
+}
+
+// ── APPLICANT EMAIL MODAL — interview invite / decline / missing info ──
+function openApplicantEmailModal(applicantId){
+  var a = (ADMIN_DATA.staff||[]).find(function(s){ return s.id===applicantId && s.status==='pending'; });
+  if(!a){ showToast('Applicant not found'); return; }
+  if(!a.email){ showToast('No email on file for '+a.name); return; }
+  document.getElementById('ae-id').value = a.id;
+  document.getElementById('ae-email').value = a.email;
+  document.getElementById('ae-name').textContent = a.name;
+  document.getElementById('ae-template').value = 'interview';
+  var today = todayPHT();
+  document.getElementById('ae-int-date').value = today;
+  document.getElementById('ae-int-time').value = '10:00';
+  document.getElementById('ae-int-notes').value = '';
+  document.getElementById('ae-missing-notes').value = '';
+  onApplicantEmailTemplateChange();
+  document.getElementById('ae-modal-bg').classList.add('open');
+}
+
+function closeApplicantEmailModal(){
+  document.getElementById('ae-modal-bg').classList.remove('open');
+}
+
+function onApplicantEmailTemplateChange(){
+  var t = document.getElementById('ae-template').value;
+  document.getElementById('ae-fields-interview').style.display   = (t==='interview')   ? '' : 'none';
+  document.getElementById('ae-fields-missinginfo').style.display = (t==='missinginfo') ? '' : 'none';
+  var previews = {
+    interview:   'Invites the applicant to an interview at the date/time you set below.',
+    decline:     'Lets the applicant know the position is no longer available — a polite, generic decline.',
+    missinginfo: 'Asks the applicant to send the specific missing information you list below.'
+  };
+  document.getElementById('ae-preview').textContent = previews[t] || '';
+}
+
+async function sendApplicantEmail(){
+  var id       = document.getElementById('ae-id').value;
+  var email    = document.getElementById('ae-email').value;
+  var name     = document.getElementById('ae-name').textContent;
+  var template = document.getElementById('ae-template').value;
+
+  var payload = { adminPin:ADMIN_PIN_STORED, id:id, email:email, name:name, template:template };
+
+  if(template==='interview'){
+    var d = document.getElementById('ae-int-date').value;
+    var t = document.getElementById('ae-int-time').value;
+    if(!d || !t){ showToast('Pick an interview date and time.'); return; }
+    payload.interviewDate = d;
+    payload.interviewTime = t;
+    payload.interviewNotes = document.getElementById('ae-int-notes').value.trim();
+  } else if(template==='missinginfo'){
+    var missing = document.getElementById('ae-missing-notes').value.trim();
+    if(!missing){ showToast('List what information is missing.'); return; }
+    payload.missingInfo = missing;
+  }
+
+  var btn = document.getElementById('ae-send-btn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try{
+    var r = await gas('sendApplicantEmail', payload);
+    if(!r.ok) throw new Error(r.error);
+    showToast('📧 Email sent to '+email);
+    closeApplicantEmailModal();
+  }catch(e){
+    showToast('❌ '+e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '📧 Send Email';
+  }
 }
 
 // ── COMPARE MODAL — side-by-side table, one column per applicant ──
