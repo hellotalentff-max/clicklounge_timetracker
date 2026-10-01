@@ -427,6 +427,17 @@ button:disabled{opacity:.5;cursor:default;}
         <button class="btn-submit" onclick="submitLeave()">📩 Submit Request</button>
       </div>
       <div style="margin-top:14px;" id="s-leave-history"></div>
+
+      <!-- Work From Home request -->
+      <div class="form-card" style="margin-top:18px;">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px;">🏠 Request Work From Home</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.5;">You can only clock in as "Work From Home" on days the admin has approved.</div>
+        <div class="fg"><label class="fl">Date From</label><input class="fi" type="date" id="wfh-from"></div>
+        <div class="fg"><label class="fl">Date To (optional)</label><input class="fi" type="date" id="wfh-to"></div>
+        <div class="fg"><label class="fl">Reason / what you'll work on</label><textarea class="fi" id="wfh-reason" rows="2" placeholder="e.g. Editing the Santos wedding photos"></textarea></div>
+        <button class="btn-submit" onclick="submitWfhRequest()">📩 Request WFH</button>
+      </div>
+      <div style="margin-top:14px;" id="s-wfh-history"></div>
     </div>
 
     <!-- Self-Evaluation Tab -->
@@ -491,6 +502,7 @@ button:disabled{opacity:.5;cursor:default;}
         <button class="btn btn-sm" id="req-sub-ot" onclick="reqSub('ot')" style="font-size:11px;">⚠ OT Requests</button>
         <button class="btn btn-sm" id="req-sub-leave" onclick="reqSub('leave')" style="font-size:11px;">📅 Leave Requests</button>
         <button class="btn btn-sm" id="req-sub-hol" onclick="reqSub('hol')" style="font-size:11px;">🏖 Holidays</button>
+        <button class="btn btn-sm" id="req-sub-wfh" onclick="reqSub('wfh')" style="font-size:11px;">🏠 WFH <span class="badge-n" id="wfh-badge" style="display:none">0</span></button>
       </div>
       <div id="req-panel-ot">
         <div style="font-size:13px;font-weight:700;margin-bottom:12px;">⚠ Overtime Approval Queue</div>
@@ -513,6 +525,22 @@ button:disabled{opacity:.5;cursor:default;}
           <button class="btn btn-t" style="margin-top:8px;" onclick="addHoliday()">Flag Holiday</button>
         </div>
         <div id="hol-list"></div>
+      </div>
+      <div id="req-panel-wfh" style="display:none;">
+        <div style="font-size:13px;font-weight:700;margin-bottom:12px;">🏠 Work From Home Requests</div>
+        <div id="a-wfh-pending"></div>
+        <div class="aform" style="margin-top:16px;">
+          <div class="aform-title">🏠 Schedule WFH (pre-approve)</div>
+          <div class="aform-grid">
+            <div class="fg"><label class="fl">Employee</label><select class="fi" id="wfh-a-emp"></select></div>
+            <div class="fg"><label class="fl">Date From</label><input class="fi" type="date" id="wfh-a-from"></div>
+            <div class="fg"><label class="fl">Date To (optional)</label><input class="fi" type="date" id="wfh-a-to"></div>
+            <div class="fg"><label class="fl">Note</label><input class="fi" id="wfh-a-reason" placeholder="e.g. Editing backlog"></div>
+          </div>
+          <button class="btn btn-t" style="margin-top:8px;" onclick="adminScheduleWfh()">Approve WFH</button>
+        </div>
+        <div style="font-size:12px;font-weight:700;margin:16px 0 8px;">Approved & past WFH days</div>
+        <div id="a-wfh-list"></div>
       </div>
     </div>
 
@@ -1186,6 +1214,7 @@ async function adminLogin(){
           if(r && r.ok){
             ADMIN_DATA = r;
             renderAdminDash();
+            loadAdminWfh();
             autoApproveEligibleOT().then(function(changed){
               if(changed) refreshAdminData();
             });
@@ -1431,7 +1460,7 @@ function doLogout(){
   var badge = document.getElementById('eval-note-badge');
   if(badge){ badge.style.display = 'none'; badge.textContent = ''; }
 
-  CURR_USER=null;CURR_PIN='';IS_ADMIN=false;
+  CURR_USER=null;CURR_PIN='';IS_ADMIN=false;MY_WFH=[];ADMIN_WFH=[];
   var pinEl=document.getElementById('login-pin'); if(pinEl) pinEl.value='';
   showView('login-view');loadStaffNames();
   qtRenderActiveList();
@@ -1447,6 +1476,7 @@ function showStaffView(){
   renderLeaveBalance();
   renderMyRecords();
   renderLeaveHistory();
+  loadMyWfh();
   showToast('👋 Welcome, '+(u.name||'')+'!');
 }
 
@@ -1478,6 +1508,7 @@ function renderStaffStatus(){
     lbl.textContent='CLOCKED IN';
     st.textContent='🟢 Working';
     since.textContent='Since: '+(open.in||'');
+    if(wfhUsedOn(CURR_USER&&CURR_USER.name, open.date||todayPHT())){ st.textContent='🏠 Working From Home'; }
     btn.textContent='⏹ CLOCK OUT';btn.className='big-btn btn-clockout';
     brkBtn.textContent='☕ Start Break';brkBtn.style.display='block';
   }
@@ -1533,6 +1564,7 @@ function renderMyRecords(){
     logs.map(function(l){
       var otBadge = l.otStatus==='approved'?'<span style="color:var(--warn);">✓OT</span>':l.otStatus==='pending'?'<span style="color:var(--danger);">⚠OT</span>':l.otStatus==='denied'?'<span style="color:var(--muted);">—OT</span>':'';
       var hol = l.holiday?'<div style="font-size:9px;color:var(--gold);">🏖</div>':'';
+      if(wfhUsedOn(CURR_USER&&CURR_USER.name, l.date)) hol += '<div style="font-size:9px;color:var(--teal);">🏠 WFH</div>';
       return '<tr><td>'+l.date.slice(5)+hol+'</td><td>'+(l.in||'—')+'</td><td>'+(l.out||'<span style="color:var(--teal);">Active</span>')+'</td><td>'+(l.workedHrs||'—')+'</td><td>'+otBadge+'</td><td>'+(l.out?'<span class="badge-ok">Done</span>':'<span class="badge-info">In</span>')+'</td></tr>';
     }).join('')+'</tbody></table>';
 }
@@ -2021,13 +2053,19 @@ function pTab(id){
 
 async function mainAction(){
   var open = MY_DATA.openLog;
+  var mode = 'studio';
+  if(!open){
+    mode = await wfhPickMode();   // asks only if WFH is approved for today
+    if(!mode) return;             // cancelled
+  }
   showToast('Processing…');
   try{
     var r;
-    if(!open){ r = await gas('clockIn',{name:CURR_USER.name,pin:CURR_PIN}); }
+    if(!open){ r = await gas('clockIn',{name:CURR_USER.name,pin:CURR_PIN,mode:mode}); }
     else { r = await gas('clockOut',{name:CURR_USER.name,pin:CURR_PIN}); }
     if(!r.ok) throw new Error(r.error);
-    showToast('✅ '+r.message);
+    showToast('✅ '+r.message+(mode==='wfh'?' (Work From Home)':''));
+    if(mode==='wfh') loadMyWfh();
     // Refresh data
     var fresh = await gas('getMyData',{name:CURR_USER.name,pin:CURR_PIN});
     if(fresh.ok){ MY_DATA=fresh; renderStaffStatus(); renderStaffStats(); renderMyRecords(); }
@@ -2094,7 +2132,7 @@ function aTab(id){
 
 // Sub-tabs inside the Requests panel (OT / Leave / Holidays)
 function reqSub(sub){
-  ['ot','leave','hol'].forEach(function(s){
+  ['ot','leave','hol','wfh'].forEach(function(s){
     var pnl = document.getElementById('req-panel-'+s);
     var btn = document.getElementById('req-sub-'+s);
     if(pnl) pnl.style.display = s===sub ? '' : 'none';
@@ -2104,6 +2142,7 @@ function reqSub(sub){
     }
   });
   if(sub === 'hol') renderHolidayList();
+  if(sub === 'wfh') renderAdminWfh();
 }
 
 function renderAdminDash(){
@@ -2119,7 +2158,7 @@ function renderAdminDash(){
   var pendApp = (d.staff||[]).filter(function(s){ return s.status==='pending'; }).length;
   var reqB = document.getElementById('req-badge');
   var apB = document.getElementById('app-badge');
-  var totalReq = pendOT + pendLv;
+  var totalReq = pendOT + pendLv + wfhPendingCount();
   if(reqB){ reqB.style.display = totalReq?'':'none'; reqB.textContent=totalReq; }
   if(apB){ apB.style.display = pendApp?'':'none'; apB.textContent=pendApp; }
 
@@ -2139,6 +2178,7 @@ function renderAdminDash(){
     else if(log.in&&!log.out){ status='<span class="badge-ok">In</span>'; inTime=log.in; }
     else if(log.in&&log.out){ status='<span style="font-size:10px;font-weight:600;color:var(--muted);">Done</span>'; inTime=log.in; outTime=log.out; hrs=log.workedHrs||'—'; pay=log.grossPay?'₱'+parseFloat(log.grossPay).toLocaleString():'—'; }
     var ot = log&&log.otStatus==='pending'?'<span class="badge-warn">⚠OT</span>':'';
+    if(log && wfhUsedOn(s.name, log.date||today)) status += ' '+wfhTag();
     var logId = log ? log.id : '';
     var bonus = log&&parseFloat(log.bonus||0)>0?'₱'+parseFloat(log.bonus).toLocaleString():'—';
     var incv  = log&&parseFloat(log.incentive||0)>0?'₱'+parseFloat(log.incentive).toLocaleString():'—';
@@ -2246,7 +2286,7 @@ async function refreshAdminData(){
   if(!GAS_URL){ renderAdminDash(); return; }
   try{
     var r = await gas('getAdminData',{adminPin:ADMIN_PIN_STORED});
-    if(r.ok){ ADMIN_DATA=r; renderAdminDash(); }
+    if(r.ok){ ADMIN_DATA=r; renderAdminDash(); loadAdminWfh(); }
   }catch(e){ showToast('⚠ Refresh failed: '+e.message); }
   // Refresh reviews badge count silently
   try{
@@ -2533,7 +2573,7 @@ function renderReport(report, type, from, to){
     if(type==='dtr' || type==='payroll'){
       var rows = emp.logs.map(function(l){
         var otStr = parseFloat(l.otHrs||0)>0 ? parseFloat(l.otHrs).toFixed(2)+'h ('+l.otStatus+')' : '—';
-        var holidayMark = l.holiday?'🏖':'';
+        var holidayMark = (l.holiday?'🏖':'') + (wfhUsedOn(emp.name, l.date)?' 🏠 WFH':'');
         var bon = parseFloat(l.bonus||0)>0?'₱'+parseFloat(l.bonus).toLocaleString():'—';
         var inc = parseFloat(l.incentive||0)>0?'₱'+parseFloat(l.incentive).toLocaleString():'—';
         return '<tr>'+
@@ -2671,6 +2711,7 @@ async function renderLogsList(){
     el.innerHTML = '<table class="a-table"><thead><tr><th>Date</th><th>Employee</th><th>In</th><th>Out</th><th>Break</th><th>Worked</th><th>OT</th><th>Bonus</th><th>Incentive</th><th>Pay</th><th>Action</th></tr></thead><tbody>'+
       allLogs.map(function(l){
         var hol = l.holiday ? '<div style="font-size:9px;color:var(--gold);">🏖</div>' : '';
+        if(wfhUsedOn(l._employee||l.employee, l.date)) hol += '<div>'+wfhTag()+'</div>';
         var otBadge = l.otStatus==='approved' ? '<span class="badge-warn">'+parseFloat(l.otHrs||0).toFixed(1)+'h ✓</span>' :
                       l.otStatus==='pending'  ? '<span class="badge-danger">'+parseFloat(l.otHrs||0).toFixed(1)+'h ⚠</span>' :
                       l.otStatus==='denied'   ? '<span style="font-size:10px;color:var(--muted);">'+parseFloat(l.otHrs||0).toFixed(1)+'h ✗</span>' :
@@ -4717,6 +4758,208 @@ function perfRenderReport(emp, from, to, r){
 })();
 
 loadStaffNames();
+</script>
+<script>
+// ════════════════════════════════════════════════════════════
+//  WORK FROM HOME (WFH) — pre-approved & flagged
+//  Backend: WFH.gs in the TimeCommand Apps Script project
+// ════════════════════════════════════════════════════════════
+var MY_WFH = [];      // this staff member's WFH requests
+var ADMIN_WFH = [];   // all WFH rows (admin)
+
+function wfhTag(){ return '<span class="badge-info" style="background:rgba(81,137,125,.12);color:var(--teal);">🏠 WFH</span>'; }
+
+function wfhRowsFor(){ return IS_ADMIN ? ADMIN_WFH : MY_WFH; }
+
+// true when this person actually clocked in as WFH on that date
+function wfhUsedOn(name, date){
+  if(!name || !date) return false;
+  return wfhRowsFor().some(function(w){ return w.employee===name && w.date===date && w.usedAt; });
+}
+
+function wfhApprovedToday(){
+  var today = todayPHT();
+  var me = CURR_USER && CURR_USER.name;
+  return MY_WFH.some(function(w){ return w.employee===me && w.date===today && w.status==='approved'; });
+}
+
+function wfhPendingCount(){
+  return (ADMIN_WFH||[]).filter(function(w){ return w.status==='pending'; }).length;
+}
+
+function wfhStatusBadge(w){
+  if(w.status==='approved') return w.usedAt ? '<span class="badge-ok">Used</span>' : '<span class="badge-ok">Approved</span>';
+  if(w.status==='pending')  return '<span class="badge-warn">Pending</span>';
+  return '<span class="badge-danger">Denied</span>';
+}
+
+// ── STAFF ───────────────────────────────────────────────────
+async function loadMyWfh(){
+  if(!CURR_USER || !GAS_URL) return;
+  try{
+    var r = await gas('getMyWfh',{name:CURR_USER.name,pin:CURR_PIN});
+    if(r && r.ok){ MY_WFH = r.wfh||[]; renderMyWfh(); renderStaffStatus(); renderMyRecords(); }
+  }catch(e){ /* WFH add-on not installed yet — ignore */ }
+}
+
+function renderMyWfh(){
+  var el = document.getElementById('s-wfh-history');
+  if(!el) return;
+  if(!MY_WFH.length){ el.innerHTML=''; return; }
+  el.innerHTML='<div style="font-size:11px;font-weight:700;margin-bottom:8px;">My WFH Requests</div>'+
+    '<table class="mini-table"><thead><tr><th>Date</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody>'+
+    MY_WFH.slice(0,20).map(function(w){
+      var cancel = w.status==='pending' ? '<button class="btn btn-sm" style="font-size:10px;" onclick="cancelMyWfh(\''+escAttr(w.id)+'\')">Cancel</button>' : '';
+      return '<tr><td>'+esc(w.date)+'</td><td style="font-size:11px;">'+esc(w.reason)+'</td><td>'+wfhStatusBadge(w)+'</td><td>'+cancel+'</td></tr>';
+    }).join('')+'</tbody></table>';
+}
+
+async function submitWfhRequest(){
+  var from = document.getElementById('wfh-from').value;
+  var to   = document.getElementById('wfh-to').value || from;
+  var reason = document.getElementById('wfh-reason').value.trim();
+  if(!from){ showToast('Pick a date.'); return; }
+  if(!reason){ showToast('Please say what you will work on.'); return; }
+  showToast('Submitting…');
+  try{
+    var r = await gas('requestWfh',{name:CURR_USER.name,pin:CURR_PIN,from:from,to:to,reason:reason});
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ '+r.message);
+    document.getElementById('wfh-from').value='';
+    document.getElementById('wfh-to').value='';
+    document.getElementById('wfh-reason').value='';
+    loadMyWfh();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function cancelMyWfh(id){
+  if(!confirm('Cancel this WFH request?')) return;
+  try{
+    var r = await gas('cancelWfh',{name:CURR_USER.name,pin:CURR_PIN,id:id});
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ '+r.message); loadMyWfh();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+// Before clock-in: if WFH is approved today, ask where they are working.
+// Resolves 'studio', 'wfh', or null (cancelled).
+function wfhPickMode(){
+  if(!wfhApprovedToday()) return Promise.resolve('studio');
+  return new Promise(function(resolve){
+    window._wfhResolve = function(v){ window._wfhResolve=null; closeModal(); resolve(v); };
+    document.getElementById('generic-modal-title').textContent = 'Where are you working today?';
+    openModal(
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">You have approved Work From Home for today.</div>'+
+      '<div style="display:flex;flex-direction:column;gap:10px;">'+
+        '<button class="big-btn btn-clockin" style="margin:0;" onclick="_wfhResolve(\'studio\')">🏢 At the Studio</button>'+
+        '<button class="big-btn" style="margin:0;background:var(--slate);color:#fff;" onclick="_wfhResolve(\'wfh\')">🏠 Work From Home</button>'+
+        '<button class="btn" onclick="_wfhResolve(null)">Cancel</button>'+
+      '</div>'
+    );
+    // closing the modal by clicking outside counts as cancel
+    var bg = document.getElementById('generic-modal-bg');
+    var watch = setInterval(function(){
+      if(!window._wfhResolve){ clearInterval(watch); return; }
+      if(!bg.classList.contains('open')){ clearInterval(watch); window._wfhResolve=null; resolve(null); }
+    }, 300);
+  });
+}
+
+// ── ADMIN ───────────────────────────────────────────────────
+async function loadAdminWfh(){
+  if(!GAS_URL || !ADMIN_PIN_STORED) return;
+  try{
+    var r = await gas('getWfhAdmin',{adminPin:ADMIN_PIN_STORED});
+    if(r && r.ok){
+      ADMIN_WFH = r.wfh||[];
+      renderAdminDash();
+      var b = document.getElementById('wfh-badge');
+      var n = wfhPendingCount();
+      if(b){ b.style.display = n?'':'none'; b.textContent = n; }
+      var pnl = document.getElementById('req-panel-wfh');
+      if(pnl && pnl.style.display!=='none') renderAdminWfh();
+    }
+  }catch(e){ /* WFH add-on not installed yet — ignore */ }
+}
+
+function renderAdminWfh(){
+  // employee dropdown
+  var sel = document.getElementById('wfh-a-emp');
+  if(sel){
+    var cur = sel.value;
+    var staff = (ADMIN_DATA.staff||[]).filter(function(s){ return s.status!=='inactive' && s.status!=='pending'; });
+    sel.innerHTML = '<option value="">— choose —</option>'+staff.map(function(s){
+      return '<option value="'+esc(s.name)+'">'+esc(s.name)+'</option>';
+    }).join('');
+    sel.value = cur;
+  }
+
+  var pending = ADMIN_WFH.filter(function(w){ return w.status==='pending'; })
+                         .sort(function(a,b){ return a.date.localeCompare(b.date); });
+  var pel = document.getElementById('a-wfh-pending');
+  pel.innerHTML = !pending.length ?
+    '<p style="color:var(--success);font-size:13px;padding:8px 0;">✅ No pending WFH requests.</p>' :
+    '<table class="a-table"><thead><tr><th>Employee</th><th>Date</th><th>Reason</th><th>Requested</th><th>Action</th></tr></thead><tbody>'+
+    pending.map(function(w){
+      return '<tr><td><strong>'+esc(w.employee)+'</strong></td><td>'+esc(w.date)+'</td>'+
+        '<td style="font-size:11px;max-width:180px;">'+esc(w.reason)+'</td>'+
+        '<td style="font-size:10px;color:var(--muted);">'+esc(w.requestedAt)+'</td>'+
+        '<td style="display:flex;gap:6px;">'+
+          '<button class="btn btn-t btn-sm" onclick="decideWfh(\''+escAttr(w.id)+'\',\'approved\')">✅ Approve</button>'+
+          '<button class="btn btn-d btn-sm" onclick="decideWfh(\''+escAttr(w.id)+'\',\'denied\')">✗ Deny</button>'+
+        '</td></tr>';
+    }).join('')+'</tbody></table>';
+
+  var rest = ADMIN_WFH.filter(function(w){ return w.status!=='pending'; }).slice(0,60);
+  var lel = document.getElementById('a-wfh-list');
+  lel.innerHTML = !rest.length ?
+    '<p style="color:var(--muted);font-size:12px;">None yet.</p>' :
+    '<table class="a-table"><thead><tr><th>Date</th><th>Employee</th><th>Reason</th><th>Status</th><th>Clocked in WFH</th><th>Action</th></tr></thead><tbody>'+
+    rest.map(function(w){
+      var rm = w.usedAt ? '' : '<button class="btn btn-d btn-sm" onclick="removeWfh(\''+escAttr(w.id)+'\')">Remove</button>';
+      return '<tr><td>'+esc(w.date)+'</td><td><strong>'+esc(w.employee)+'</strong></td>'+
+        '<td style="font-size:11px;max-width:180px;">'+esc(w.reason)+'</td>'+
+        '<td>'+wfhStatusBadge(w)+'</td>'+
+        '<td style="font-size:10px;">'+(w.usedAt?esc(w.usedAt.slice(11,16)):'—')+'</td>'+
+        '<td>'+rm+'</td></tr>';
+    }).join('')+'</tbody></table>';
+}
+
+async function decideWfh(id, decision){
+  var notes = '';
+  if(decision==='denied'){ notes = prompt('Reason for denying (optional):')||''; }
+  try{
+    var r = await gas('decideWfh',{adminPin:ADMIN_PIN_STORED,id:id,decision:decision,notes:notes});
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ '+r.message); await loadAdminWfh(); renderAdminWfh();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function adminScheduleWfh(){
+  var emp  = document.getElementById('wfh-a-emp').value;
+  var from = document.getElementById('wfh-a-from').value;
+  var to   = document.getElementById('wfh-a-to').value || from;
+  var reason = document.getElementById('wfh-a-reason').value.trim();
+  if(!emp || !from){ showToast('Choose an employee and a date.'); return; }
+  try{
+    var r = await gas('scheduleWfh',{adminPin:ADMIN_PIN_STORED,employee:emp,from:from,to:to,reason:reason});
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ '+r.message);
+    document.getElementById('wfh-a-from').value='';
+    document.getElementById('wfh-a-to').value='';
+    document.getElementById('wfh-a-reason').value='';
+    await loadAdminWfh(); renderAdminWfh();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+async function removeWfh(id){
+  if(!confirm('Remove this WFH day?')) return;
+  try{
+    var r = await gas('removeWfh',{adminPin:ADMIN_PIN_STORED,id:id});
+    if(!r.ok) throw new Error(r.error);
+    showToast('✅ '+r.message); await loadAdminWfh(); renderAdminWfh();
+  }catch(e){ showToast('❌ '+e.message); }
+}
 </script>
 </body>
 </html>
