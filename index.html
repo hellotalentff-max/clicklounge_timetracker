@@ -210,6 +210,9 @@ button:disabled{opacity:.5;cursor:default;}
   </div>
   <div class="admin-link" onclick="adminLogin()">🔐 Admin Access</div>
 
+  <!-- ═══ EARLY CALL REMINDER — shown to all staff for tomorrow's early HMU bookings ═══ -->
+  <div id="early-call-banner" style="display:none;max-width:420px;margin:16px auto 0;padding:14px 16px;background:rgba(215,144,104,.12);border:1.5px solid rgba(215,144,104,.5);border-radius:12px;color:#f5f0e8;"></div>
+
   <!-- ═══ QUICK TASK TIMER — no full login needed ═══ -->
   <div style="margin-top:20px;padding:16px;background:rgba(255,255,255,.06);border:1px solid rgba(215,144,104,.2);border-radius:12px;max-width:420px;margin-left:auto;margin-right:auto;color:#f5f0e8;">
     <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:#d79068;margin-bottom:4px;">⏱ Quick Task Timer</div>
@@ -1077,9 +1080,19 @@ var ADMIN_DATA = {};
 // ════════════════════════════════════════
 //  GAS CALL
 // ════════════════════════════════════════
+// Fixed URL for the separate POS/Booking backend — used only for read-only
+// cross-system lookups (e.g. early-call reminders from tomorrow's bookings).
+// Not user-configurable since it's a hardcoded integration point, unlike GAS_URL.
+var POS_GAS_URL = 'https://script.google.com/macros/s/AKfycbx_Y5nH34Rq16JJ2AxBDr30ttmDFuic61OqoC0u3Wq0zogHEhfoV6qE7uiNagI43flVgw/exec';
+function posGas(action, payload){ return gasCallTo_(POS_GAS_URL, action, payload); }
+
 async function gas(action, payload){
   var url = GAS_URL || localStorage.getItem('tc_gas_url') || '';
   if(!url) throw new Error('GAS URL not configured. Go to Admin → Settings.');
+  return gasCallTo_(url, action, payload);
+}
+
+function gasCallTo_(url, action, payload){
   var b = btoa(unescape(encodeURIComponent(JSON.stringify({action:action, payload:payload||{}}))));
   var u = url + '?d=' + encodeURIComponent(b) + '&action=' + encodeURIComponent(action);
   // Send EVERY payload field as a URL param too — guarantees data arrives even if base64 decode fails
@@ -4746,6 +4759,29 @@ function perfRenderReport(emp, from, to, r){
 })();
 
 loadStaffNames();
+loadEarlyCallReminders();
+
+// ════════════════════════════════════════
+//  EARLY CALL REMINDER — tomorrow's HMU bookings that need early login
+//  Pulled from the separate POS/Booking backend (read-only, no PIN needed —
+//  same cross-system call the public booking form already makes).
+// ════════════════════════════════════════
+async function loadEarlyCallReminders(){
+  var el = document.getElementById('early-call-banner');
+  if(!el) return;
+  try{
+    var r = await posGas('getEarlyCallReminders', {});
+    if(!r || !r.ok || !r.reminders || !r.reminders.length){ el.style.display='none'; return; }
+    var dateLabel = new Date(r.date+'T00:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+    var items = r.reminders.map(function(x){
+      return '<div style="margin-top:6px;font-size:12px;">• <strong>'+esc(x.client)+'</strong> — '+esc(x.service)+' at '+esc(x.sessionTime)+' <span style="color:#d79068;">→ log in by '+esc(x.requiredLogin)+'</span></div>';
+    }).join('');
+    el.innerHTML = '<div style="font-size:13px;font-weight:700;color:#d79068;">⏰ Early Call Reminder — Tomorrow ('+dateLabel+')</div>'+
+      '<div style="font-size:11px;color:rgba(245,240,232,.75);margin-top:2px;">These HMU sessions need prep before the usual shift start:</div>'+
+      items;
+    el.style.display = '';
+  }catch(e){ el.style.display='none'; }
+}
 </script>
 </body>
 </html>
