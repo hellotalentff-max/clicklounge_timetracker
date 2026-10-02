@@ -2507,6 +2507,26 @@ async function generateReport(){
   }catch(e){ showToast('❌ '+e.message); }
 }
 
+// Parses "H:MM" / "HH:MM" (24-hour, no AM/PM) into minutes since midnight. Returns null if unparseable.
+function parseTimeToMinutes_(t){
+  t = String(t||'').trim();
+  if(!t) return null;
+  var m = t.match(/^(\d{1,2}):(\d{2})/);
+  if(!m) return null;
+  return parseInt(m[1],10)*60 + parseInt(m[2],10);
+}
+
+// Minutes late for one log, against the employee's assigned shift start.
+// Returns null when there's no assigned shift start to compare against (not 0 — 0 means "on time").
+function lateMinsForLog_(staffRec, log){
+  if(!staffRec) return null;
+  var shiftStart = parseTimeToMinutes_(staffRec.shiftStart);
+  if(shiftStart===null) return null;
+  var inMin = parseTimeToMinutes_(log.in);
+  if(inMin===null) return null;
+  return Math.max(0, inMin - shiftStart);
+}
+
 function renderReport(report, type, from, to){
   var el = document.getElementById('a-report-output');
   var html = '<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">'+
@@ -2517,6 +2537,8 @@ function renderReport(report, type, from, to){
     if(!emp.logs.length && !emp.leaves.length) return;
     var staffRec = (ADMIN_DATA.staff||[]).find(function(s){ return s.name===emp.name; });
     var empEmail = staffRec ? (staffRec.email||'') : '';
+    var hasShift = staffRec && parseTimeToMinutes_(staffRec.shiftStart)!==null;
+    var totalLateMin = 0;
     var header = '<div class="report-card">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'+
         '<div class="report-name">'+emp.name+' — '+emp.role+' ('+emp.type+')</div>'+
@@ -2527,6 +2549,7 @@ function renderReport(report, type, from, to){
         '<div style="font-size:11px;"><strong>Period:</strong> '+from+' to '+to+'</div>'+
         '<div style="font-size:11px;"><strong>Rate:</strong> ₱'+parseFloat(emp.rate||0).toLocaleString()+'/hr</div>'+
         '<div style="font-size:11px;"><strong>Leave taken:</strong> '+emp.leaveDays+' day(s)</div>'+
+        (hasShift?'<div style="font-size:11px;"><strong>Shift start:</strong> '+staffRec.shiftStart+'</div>':'')+
         (empEmail?'<div style="font-size:11px;color:var(--muted);">✉ '+empEmail+'</div>':'<div style="font-size:11px;color:var(--danger);">⚠ no email on file</div>')+
       '</div>';
 
@@ -2536,10 +2559,14 @@ function renderReport(report, type, from, to){
         var holidayMark = l.holiday?'🏖':'';
         var bon = parseFloat(l.bonus||0)>0?'₱'+parseFloat(l.bonus).toLocaleString():'—';
         var inc = parseFloat(l.incentive||0)>0?'₱'+parseFloat(l.incentive).toLocaleString():'—';
+        var lateMin = lateMinsForLog_(staffRec, l);
+        var lateStr = lateMin===null ? '—' : (lateMin>0 ? lateMin+' min' : '✓ on time');
+        if(lateMin) totalLateMin += lateMin;
         return '<tr>'+
           '<td>'+l.date+holidayMark+'</td>'+
           '<td>'+(l.in||'—')+'</td>'+
           '<td>'+(l.out||'—')+'</td>'+
+          '<td'+(lateMin>0?' style="color:var(--danger);font-weight:600;"':'')+'>'+lateStr+'</td>'+
           '<td>'+((l.breakMins||0)>0?(l.breakMins||0)+' min':'—')+'</td>'+
           '<td>'+(parseFloat(l.workedHrs||0).toFixed(2))+'</td>'+
           '<td>'+(parseFloat(l.regHrs||0).toFixed(2))+'</td>'+
@@ -2549,14 +2576,16 @@ function renderReport(report, type, from, to){
           '<td>₱'+parseFloat(l.grossPay||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})+'</td>'+
         '</tr>';
       }).join('');
-      var totalRow = '<tr class="total"><td colspan="4">TOTAL</td>'+
+      var totalRow = '<tr class="total"><td colspan="3">TOTAL</td>'+
+        '<td'+(totalLateMin>0?' style="color:var(--danger);"':'')+'>'+(hasShift?(Math.floor(totalLateMin/60)+'h '+(totalLateMin%60)+'m'):'—')+'</td>'+
+        '<td>'+(emp.totalBreakMins||0)+' min</td>'+
         '<td>'+(emp.totalReg||0).toFixed(2)+'h</td>'+
         '<td>'+(emp.totalReg||0).toFixed(2)+'h</td>'+
         '<td>'+(emp.totalOT||0).toFixed(2)+'h OT</td>'+
         '<td><strong>₱'+(emp.totalBonus||0).toLocaleString()+'</strong></td>'+
         '<td><strong>₱'+(emp.totalIncentive||0).toLocaleString()+'</strong></td>'+
         '<td><strong>₱'+emp.totalPay.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})+'</strong></td></tr>';
-      header += '<table class="dtr-table"><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Break</th><th>Worked</th><th>Reg Hrs</th><th>OT</th><th>Bonus</th><th>Incentive</th><th>Gross Pay</th></tr></thead><tbody>'+rows+totalRow+'</tbody></table>';
+      header += '<table class="dtr-table"><thead><tr><th>Date</th><th>In</th><th>Out</th><th>Late</th><th>Break</th><th>Worked</th><th>Reg Hrs</th><th>OT</th><th>Bonus</th><th>Incentive</th><th>Gross Pay</th></tr></thead><tbody>'+rows+totalRow+'</tbody></table>';
     }
 
     if(emp.leaves.length){
