@@ -2428,33 +2428,39 @@ async function deletePayoutById(id, employeeName){
 }
 
 // ════════════════════════════════════════
-//  PAY PERIOD SCHEDULE — fixed semi-monthly cutoffs, paid on the 15th and 30th.
-//  A 31st (when a month has one) has no payday of its own on the fixed 15/30
-//  schedule, so it's folded forward into the START of the following 1–15
-//  period rather than being dropped or attached to the 16–30 period.
+//  PAY PERIOD SCHEDULE — salary is paid on the 15th and the 30th.
+//    Paid on the 15th: covers the 30th of the previous month through the 14th
+//                      (so a 31st is included; if the previous month has no 30th,
+//                      e.g. February, it simply starts on the 1st).
+//    Paid on the 30th: covers the 15th through the 29th
+//                      (or the last day of the month when it is shorter, e.g. February).
+//  The two periods meet exactly, so every day belongs to one period and none is dropped.
 // ════════════════════════════════════════
 var PP_MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function ppLastDayOfMonth(year, month1based){ return new Date(year, month1based, 0).getDate(); }
 function ppDateStr(year, month1based, day){ return year+'-'+String(month1based).padStart(2,'0')+'-'+String(day).padStart(2,'0'); }
 
-// half: 1 = pays on the 15th (covers 1–15, plus a folded-in 31st from the previous month)
-//       2 = pays on the 30th (covers 16–30, or 16–end for short months like Feb)
+// half: 1 = pays on the 15th  (30th of last month – 14th)
+//       2 = pays on the 30th  (15th – 29th, or month end if shorter)
 function getPayPeriod(year, month1based, half){
   if(half===1){
     var prevMonth = month1based-1, prevYear = year;
     if(prevMonth===0){ prevMonth=12; prevYear=year-1; }
     var prevLastDay = ppLastDayOfMonth(prevYear, prevMonth);
-    var from = prevLastDay===31 ? ppDateStr(prevYear, prevMonth, 31) : ppDateStr(year, month1based, 1);
-    var to = ppDateStr(year, month1based, 15);
-    return { from:from, to:to, payDate:to,
-      label: PP_MONTH_NAMES[month1based-1]+' 1–15, '+year+(prevLastDay===31?' (incl. '+PP_MONTH_NAMES[prevMonth-1]+' 31)':'')+' · pay '+PP_MONTH_NAMES[month1based-1]+' 15' };
+    var startsPrev = prevLastDay >= 30;
+    var from = startsPrev ? ppDateStr(prevYear, prevMonth, 30) : ppDateStr(year, month1based, 1);
+    var to = ppDateStr(year, month1based, 14);
+    var fromLbl = startsPrev ? PP_MONTH_NAMES[prevMonth-1]+' 30' : PP_MONTH_NAMES[month1based-1]+' 1';
+    return { from:from, to:to, payDate:ppDateStr(year, month1based, 15),
+      label: fromLbl+(prevLastDay===31&&startsPrev?' (incl. 31)':'')+' – '+PP_MONTH_NAMES[month1based-1]+' 14, '+year+' · pay '+PP_MONTH_NAMES[month1based-1]+' 15' };
   } else {
     var lastDay = ppLastDayOfMonth(year, month1based);
-    var cutoffDay = Math.min(lastDay, 30);
-    var from = ppDateStr(year, month1based, 16);
-    var to = ppDateStr(year, month1based, cutoffDay);
-    return { from:from, to:to, payDate:to,
-      label: PP_MONTH_NAMES[month1based-1]+' 16–'+cutoffDay+', '+year+' · pay '+PP_MONTH_NAMES[month1based-1]+' '+cutoffDay };
+    var endDay = Math.min(lastDay, 29);
+    var from = ppDateStr(year, month1based, 15);
+    var to = ppDateStr(year, month1based, endDay);
+    var payDay = Math.min(lastDay, 30);
+    return { from:from, to:to, payDate:ppDateStr(year, month1based, payDay),
+      label: PP_MONTH_NAMES[month1based-1]+' 15–'+endDay+', '+year+' · pay '+PP_MONTH_NAMES[month1based-1]+' '+payDay };
   }
 }
 
@@ -2474,9 +2480,8 @@ function ppGeneratePeriods(monthsBack, monthsFwd){
       periods.push(p);
     });
   }
-  // A day-31 rolls into next month's period-1 "from" date, which can make that
-  // period's from < the previous period's to when sorted purely by (y,m,half) —
-  // sort by actual from/to instead so the list always reads chronologically.
+  // Period 1 starts in the previous month, so sort by the actual start date to keep
+  // the list chronological.
   periods.sort(function(a,b){ return a.from.localeCompare(b.from); });
   return periods;
 }
