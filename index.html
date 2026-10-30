@@ -460,7 +460,7 @@ button:disabled{opacity:.5;cursor:default;}
     <button class="atab" onclick="aTab('requests')" id="atab-requests">📋 Requests <span class="badge-n" id="req-badge" style="display:none">0</span></button>
     <button class="atab" onclick="aTab('reports')" id="atab-reports">📄 Reports</button>
     <button class="atab" onclick="aTab('perf')" id="atab-perf">📊 Performance</button>
-    <button class="atab" onclick="aTab('inc')" id="atab-inc">💰 Incentives</button>
+    <button class="atab" onclick="aTab('inc')" id="atab-inc">💰 Incentives <span class="badge-n" id="inc-badge" style="display:none">!</span></button>
     <button class="atab" onclick="aTab('emp')" id="atab-emp">👥 Employees</button>
     <button class="atab" onclick="aTab('applicants')" id="atab-applicants">📝 Applicants <span class="badge-n" id="app-badge" style="display:none">0</span></button>
     <button class="atab" onclick="aTab('set')" id="atab-set">⚙ Settings</button>
@@ -469,6 +469,7 @@ button:disabled{opacity:.5;cursor:default;}
   <div class="ac">
     <!-- DASHBOARD -->
     <div id="apanel-dash">
+      <div id="inc-reminder" style="display:none;"></div>
       <div class="a-kpi-row" id="a-kpis"></div>
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px;">Today's Attendance</div>
       <div id="a-today-table"></div>
@@ -2141,6 +2142,7 @@ function reqSub(sub){
 }
 
 function renderAdminDash(){
+  try{ incReminder(); }catch(e){}
   var d = ADMIN_DATA;
   var today = d.today||'';
   var staff = (d.staff||[]).filter(function(s){ return s.status!=='inactive'; });
@@ -4902,6 +4904,49 @@ function incInit(){
   if(el && !el.value) el.value = todayPHT().slice(0,7);
 }
 
+// Incentives are paid on the 5th of the following month, so last month's counts
+// (organic bookings, reviews, referrals) must be in before then.
+var INC_PAYDAY = 5;
+var INC_START = '2026-10';   // first month incentives apply to
+function incPrevMonth_(){
+  var p = nowPHT(), y = p.year, m = p.month - 1;
+  if(m < 1){ m = 12; y--; }
+  return y + '-' + String(m).padStart(2,'0');
+}
+function incMonthName_(ym){
+  return new Date(parseInt(ym.slice(0,4),10), parseInt(ym.slice(5,7),10)-1, 1).toLocaleDateString('en-US',{month:'long'});
+}
+function incReminder(){
+  var box = document.getElementById('inc-reminder'), badge = document.getElementById('inc-badge');
+  if(!box) return;
+  var ym = incPrevMonth_(), day = nowPHT().day;
+  var due = ym >= INC_START && !incInputs_(ym).done;
+  if(badge) badge.style.display = due ? '' : 'none';
+  if(!due){ box.style.display = 'none'; return; }
+  var mn = incMonthName_(ym), thisMn = incMonthName_(todayPHT().slice(0,7));
+  var when = day < INC_PAYDAY ? 'Payday is '+thisMn+' '+INC_PAYDAY+' — '+(INC_PAYDAY-day)+' day'+(INC_PAYDAY-day!==1?'s':'')+' left.'
+           : day === INC_PAYDAY ? 'Payday is today.'
+           : 'Payday was '+thisMn+' '+INC_PAYDAY+' — overdue.';
+  box.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(215,144,104,.1);border:1.5px solid var(--gold);border-radius:12px;padding:12px 14px;margin-bottom:14px;">'+
+    '<div><div style="font-size:13px;font-weight:700;color:var(--slate);">💰 Enter '+esc(mn)+'\'s incentive counts</div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:2px;">Organic bookings, 5-star reviews and referrals for '+esc(mn)+'. '+when+'</div></div>'+
+    '<button class="btn btn-t btn-sm" onclick="incOpenMonth(\''+ym+'\')">Enter counts →</button>'+
+  '</div>';
+  box.style.display = '';
+}
+function incOpenMonth(ym){
+  aTab('inc');
+  document.getElementById('inc-month').value = ym;
+  incGenerate();
+}
+function incMarkDone(){
+  if(!INC_DATA) return;
+  INC_DATA.inputs.done = true;
+  try{ localStorage.setItem('tc_inc_'+INC_DATA.ym, JSON.stringify(INC_DATA.inputs)); }catch(e){}
+  incReminder(); incRender();
+  showToast('✅ '+incMonthName_(INC_DATA.ym)+' counts marked as entered');
+}
+
 async function incGenerate(){
   var ym = document.getElementById('inc-month').value;
   var out = document.getElementById('inc-output');
@@ -5068,6 +5113,10 @@ function incRender(){
       }).join('')+
     '</tbody></table></div>'+
     '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Feedback forms (from the POS): '+d.feedback+' of '+d.txnCount+' invoiced clients = <strong>'+c.fbPct+'%</strong></div>'+
+    '<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px;">'+
+      (inp.done ? '<span style="font-size:11px;color:var(--success);font-weight:600;">✓ Counts entered</span>'
+                : '<button class="btn btn-t btn-sm" onclick="incMarkDone()">✓ Done — counts entered</button>')+
+    '</div>'+
   '</div>';
 
   html += '<div style="'+card+'">'+
