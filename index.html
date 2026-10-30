@@ -2527,11 +2527,22 @@ async function generateReport(){
 
 // Parses "H:MM" / "HH:MM" (24-hour, no AM/PM) into minutes since midnight. Returns null if unparseable.
 function parseTimeToMinutes_(t){
-  t = String(t||'').trim();
+  t = String(t||'').trim().replace(/^'/, '');
   if(!t) return null;
   var m = t.match(/^(\d{1,2}):(\d{2})/);
   if(!m) return null;
   return parseInt(m[1],10)*60 + parseInt(m[2],10);
+}
+
+// Shift start/end are saved with a leading apostrophe so Google Sheets keeps them as text.
+// Saved as a plain "11:00", Sheets turns it into a time value and it came back 8 hours early
+// (03:00), which made every clock-in about 480 minutes "late".
+function shiftForSheet_(v){ v = String(v||'').trim(); return v ? "'" + v : ''; }
+// Shift time for display and the edit form: "HH:MM", or '' if there isn't one.
+function shiftTxt_(v){
+  var m = parseTimeToMinutes_(v);
+  if(m===null) return '';
+  return String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
 }
 
 // Minutes late for one log, against the employee's assigned shift start.
@@ -2568,7 +2579,7 @@ function renderReport(report, type, from, to){
         '<div style="font-size:11px;"><strong>Rate:</strong> ₱'+parseFloat(emp.rate||0).toLocaleString()+'/hr <span style="color:var(--muted);">(OT at the same rate)</span></div>'+
         '<div style="font-size:11px;"><strong>Total hours:</strong> '+((parseFloat(emp.totalReg)||0)+(parseFloat(emp.totalOT)||0)).toFixed(2)+'h <span style="color:var(--muted);">('+(parseFloat(emp.totalReg)||0).toFixed(2)+' regular + '+(parseFloat(emp.totalOT)||0).toFixed(2)+' OT)</span></div>'+
         '<div style="font-size:11px;"><strong>Leave taken:</strong> '+emp.leaveDays+' day(s)</div>'+
-        (hasShift?'<div style="font-size:11px;"><strong>Shift start:</strong> '+staffRec.shiftStart+'</div>':'')+
+        (hasShift?'<div style="font-size:11px;"><strong>Shift start:</strong> '+shiftTxt_(staffRec.shiftStart)+'</div>':'')+
         (empEmail?'<div style="font-size:11px;color:var(--muted);">✉ '+empEmail+'</div>':'<div style="font-size:11px;color:var(--danger);">⚠ no email on file</div>')+
       '</div>';
 
@@ -3674,7 +3685,7 @@ function filterEmpList(){
         '<td>'+tierBadge+'</td>'+
         '<td><span class="badge-info">'+esc(s.type||'—')+'</span></td>'+
         '<td>₱'+(parseFloat(s.rate||0)).toLocaleString()+'</td>'+
-        '<td class="hm" style="font-size:10px;">'+(s.shiftType==='fixed'?(s.shiftStart||'?')+'–'+(s.shiftEnd||'?'):'Flexible')+'</td>'+
+        '<td class="hm" style="font-size:10px;">'+(s.shiftType==='fixed'?(shiftTxt_(s.shiftStart)||'?')+'–'+(shiftTxt_(s.shiftEnd)||'?'):'Flexible')+'</td>'+
         '<td class="hm" style="font-size:10px;">SL:'+(s.slBal||0)+' VL:'+(s.vlBal||0)+' EL:'+(s.elBal||0)+'</td>'+
         '<td class="hm" style="font-size:11px;">'+contact+'</td>'+
         '<td>'+status+'</td>'+
@@ -3738,8 +3749,8 @@ function openEmpModal(name){
     document.getElementById('ef-emergency-phone').value   = s.emergencyPhone || '';
     document.getElementById('ef-emergency-rel').value     = s.emergencyRelationship || '';
     document.getElementById('ef-shift').value       = s.shiftType || 'flexible';
-    document.getElementById('ef-start').value       = s.shiftStart || '';
-    document.getElementById('ef-end').value         = s.shiftEnd || '';
+    document.getElementById('ef-start').value       = shiftTxt_(s.shiftStart);
+    document.getElementById('ef-end').value         = shiftTxt_(s.shiftEnd);
     document.getElementById('ef-sl').value          = s.slBal !== undefined ? s.slBal : 5;
     document.getElementById('ef-vl').value          = s.vlBal !== undefined ? s.vlBal : 5;
     document.getElementById('ef-el').value          = s.elBal !== undefined ? s.elBal : 3;
@@ -3883,8 +3894,8 @@ async function saveEmployee(){
     emergencyPhone:document.getElementById('ef-emergency-phone').value.trim(),
     emergencyRelationship:document.getElementById('ef-emergency-rel').value.trim(),
     shiftType:document.getElementById('ef-shift').value,
-    shiftStart:document.getElementById('ef-start').value,
-    shiftEnd:document.getElementById('ef-end').value,
+    shiftStart:shiftForSheet_(document.getElementById('ef-start').value),
+    shiftEnd:shiftForSheet_(document.getElementById('ef-end').value),
     slBal:document.getElementById('ef-sl').value,
     vlBal:document.getElementById('ef-vl').value,
     elBal:document.getElementById('ef-el').value,
