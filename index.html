@@ -460,6 +460,7 @@ button:disabled{opacity:.5;cursor:default;}
     <button class="atab" onclick="aTab('requests')" id="atab-requests">📋 Requests <span class="badge-n" id="req-badge" style="display:none">0</span></button>
     <button class="atab" onclick="aTab('reports')" id="atab-reports">📄 Reports</button>
     <button class="atab" onclick="aTab('perf')" id="atab-perf">📊 Performance</button>
+    <button class="atab" onclick="aTab('inc')" id="atab-inc">💰 Incentives</button>
     <button class="atab" onclick="aTab('emp')" id="atab-emp">👥 Employees</button>
     <button class="atab" onclick="aTab('applicants')" id="atab-applicants">📝 Applicants <span class="badge-n" id="app-badge" style="display:none">0</span></button>
     <button class="atab" onclick="aTab('set')" id="atab-set">⚙ Settings</button>
@@ -646,6 +647,22 @@ button:disabled{opacity:.5;cursor:default;}
       <div id="applicants-list"></div>
     </div>
 
+    <!-- INCENTIVES -->
+    <div id="apanel-inc" style="display:none;">
+      <div class="aform">
+        <div class="aform-title">💰 Staff Incentives</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
+          Sales and add-ons come from the POS; attendance, lateness and OT from the time logs. Incentives are paid only when the month's profit margin is 30% or more.
+          Add-ons pay 10%: Photographer and Photo Edit (5) split 25% seller / 50% the one who did it / 25% fund; every other add-on and each organic booking goes to the fund, shared equally. Digital copies don't count.
+        </div>
+        <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
+          <div class="fg" style="margin:0;"><label class="fl">Month</label><input class="fi" type="month" id="inc-month"></div>
+          <button class="btn btn-t" onclick="incGenerate()">💰 Calculate</button>
+        </div>
+      </div>
+      <div id="inc-output"></div>
+    </div>
+
     <!-- REVIEWS -->
     <!-- SETTINGS -->
     <div id="apanel-set" style="display:none;">
@@ -758,6 +775,9 @@ button:disabled{opacity:.5;cursor:default;}
         <div class="fg" style="grid-column:1/-1;"><label class="fl">Notes</label>
           <textarea class="fi" id="lf-notes" rows="2" placeholder="Reason for manual entry…"></textarea>
         </div>
+        <label style="grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+          <input type="checkbox" id="lf-clientfirst"> ⚠ Client arrived before this staff member <span style="color:var(--muted);font-size:10px;">(loses the "never arrived after a client" incentive)</span>
+        </label>
       </div>
       <div id="lf-preview" style="background:var(--light);border-radius:8px;padding:10px;margin-top:12px;font-size:11px;color:var(--muted);"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
@@ -2092,7 +2112,7 @@ function showAdminView(){
 }
 
 function aTab(id){
-  ['dash','logs','requests','reports','perf','emp','applicants','set'].forEach(function(t){
+  ['dash','logs','requests','reports','perf','inc','emp','applicants','set'].forEach(function(t){
     var btn = document.getElementById('atab-'+t);
     var pnl = document.getElementById('apanel-'+t);
     if(btn) btn.classList.toggle('on',t===id);
@@ -2101,6 +2121,7 @@ function aTab(id){
   if(id === 'logs') renderLogsList();
   if(id === 'applicants') renderApplicants();
   if(id === 'perf'){ perfInit(); loadReviews(); }
+  if(id === 'inc') incInit();
   if(id === 'requests') reqSub('ot');
   if(id === 'reports'){ try{ populateReportEmpSelect(); }catch(e){} try{ populatePayPeriods(); }catch(e){} }
 }
@@ -2771,6 +2792,7 @@ function openLogModal(logId){
     var el = document.getElementById(id); if(el) el.value = '';
   });
   document.getElementById('lf-ot-status').value = '';
+  document.getElementById('lf-clientfirst').checked = false;
   document.getElementById('lf-delete-btn').style.display = 'none';
   document.getElementById('lf-preview').textContent = '';
 
@@ -2812,7 +2834,8 @@ function loadLogIntoForm(log, employee){
   document.getElementById('lf-ot-status').value= log.otStatus || '';
   document.getElementById('lf-bonus').value    = log.bonus || '';
   document.getElementById('lf-incentive').value= log.incentive || '';
-  document.getElementById('lf-notes').value    = log.notes || '';
+  document.getElementById('lf-notes').value    = String(log.notes || '').replace(CLIENT_FIRST_TAG, '').trim();
+  document.getElementById('lf-clientfirst').checked = hasClientFirstTag_(log.notes);
 }
 
 function closeLogModal(){ document.getElementById('log-modal-bg').classList.remove('open'); }
@@ -2837,7 +2860,7 @@ async function saveLog(){
     otStatus: document.getElementById('lf-ot-status').value,
     bonus: document.getElementById('lf-bonus').value || 0,
     incentive: document.getElementById('lf-incentive').value || 0,
-    notes: document.getElementById('lf-notes').value
+    notes: ((document.getElementById('lf-clientfirst').checked ? CLIENT_FIRST_TAG+' ' : '') + document.getElementById('lf-notes').value).trim()
   };
   var logId = document.getElementById('lf-id').value;
   showToast('Saving log…');
@@ -4472,7 +4495,7 @@ function perfInit(){
   sel.innerHTML = '<option value="">— Select employee —</option>' + opts;
   // Default to current PHT month
   document.getElementById('perf-from').value = monthStartPHT();
-  document.getElementById('perf-to').value = monthEndPHT();
+  document.getElementById('perf-to').value = todayPHT();
   // Communication board selectors
   var cbEmp = document.getElementById('cb-emp');
   var cbFil = document.getElementById('cb-filter-emp');
@@ -4585,36 +4608,12 @@ async function perfGenerate(){
   var out  = document.getElementById('perf-output');
   if(!emp){ showToast('⚠ Pick an employee'); return; }
   if(!from || !to){ showToast('⚠ Pick a date range'); return; }
+  to = perfCapTo_(to);
+  if(to < from){ showToast('⚠ That range hasn\'t started yet'); return; }
 
   out.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;">📊 Compiling performance data…</div>';
   try{
-    // Fetch from TimeCommand GAS (attendance + tasks sessions + evals)
-    var r = await gas('getPerformanceReport', { employee: emp, from: from, to: to });
-    if(!r.ok) throw new Error(r.error || 'Failed to load');
-
-    // Also try fetching from Tasks Manager (tasks completed)
-    r.tasksMgr = { connected: false, completed: 0, total: 0, avgTurnaround: 0 };
-    if(TASKS_MGR_URL){
-      try{
-        var tmr = await tasksMgrCall('getTasksForEmployee', { employee: emp, from: from, to: to });
-        if(tmr && tmr.ok){
-          var tasks = tmr.tasks || [];
-          var completed = tasks.filter(function(t){ return t.completedDate || t.completedAt; });
-          var turnarounds = completed.map(function(t){
-            var s = new Date(String(t.createdAt||t.assignedAt||'').slice(0,10));
-            var e2 = new Date(String(t.completedDate||t.completedAt||'').slice(0,10));
-            if(isNaN(s.getTime())||isNaN(e2.getTime())) return null;
-            return (e2-s)/86400000;
-          }).filter(function(v){ return v!==null&&v>=0; });
-          r.tasksMgr = {
-            connected: true,
-            total: tasks.length,
-            completed: completed.length,
-            avgTurnaround: turnarounds.length > 0 ? turnarounds.reduce(function(a,b){return a+b;},0)/turnarounds.length : 0
-          };
-        }
-      }catch(e){ r.tasksMgr.error = e.message; }
-    }
+    var r = await perfFetch_(emp, from, to);
     out.innerHTML = perfRenderReport(emp, from, to, r);
   }catch(e){
     out.innerHTML = '<div style="color:var(--danger);padding:14px;font-size:12px;border:1px solid var(--danger);border-radius:8px;background:rgba(192,84,74,.05);">❌ '+esc(e.message)+'</div>';
@@ -4622,60 +4621,10 @@ async function perfGenerate(){
 }
 
 function perfRenderReport(emp, from, to, r){
-  var att = r.attendance || {};
   var tasks = r.tasks || {};
   var tm = r.tasksMgr || {};
-  var evals = r.evals || {};
-
-  // ── Compute auto-KPIs ──
-  var kpis = [];
-  // 1. Attendance Rate
-  var attRate = att.expectedDays > 0 ? Math.min(100, (att.daysWorked / att.expectedDays) * 100) : 0;
-  kpis.push({ name:'Attendance Rate', actual: Math.round(attRate)+'%', score:attRate, source:'TimeLogs', target:'100%' });
-
-  // 2. Total Hours Worked
-  var hrsTarget = (att.expectedDays||0) * 8;
-  var hrsScore = hrsTarget > 0 ? Math.min(100, ((att.totalHours||0)/hrsTarget)*100) : 0;
-  kpis.push({ name:'Hours Worked', actual:(att.totalHours||0).toFixed(1)+'h', score:hrsScore, source:'TimeLogs', target:hrsTarget.toFixed(0)+'h' });
-
-  // 3. Late Arrivals (lower is better)
-  var maxLate = Math.max(att.daysWorked||1, 1);
-  var lateScore = Math.max(0, 100 - ((att.lateCount||0) / maxLate * 100));
-  kpis.push({ name:'Punctuality', actual:(att.lateCount||0)+' late', score:lateScore, source:'TimeLogs', target:'0 late' });
-
-  // 4. Tasks Timed (task timer sessions)
-  var taskTimedScore = Math.min(100, (tasks.totalSessions||0) / Math.max(att.daysWorked||1,1) * 25);
-  kpis.push({ name:'Tasks Timed', actual:(tasks.totalSessions||0)+' sessions', score:taskTimedScore, source:'Task Timer', target:'~4/day' });
-
-  // 5. Productive Time Tracked
-  var prodTarget = (att.daysWorked||1) * 240;
-  var prodScore = prodTarget > 0 ? Math.min(100, (tasks.totalMin||0)/prodTarget*100) : 0;
-  kpis.push({ name:'Productive Time', actual:_formatDuration((tasks.totalMin||0)*60000), score:prodScore, source:'Task Timer', target:_formatDuration(prodTarget*60000) });
-
-  // 6. Tasks Completed (from Tasks Manager)
-  if(tm.connected){
-    var complScore = tm.total > 0 ? (tm.completed / tm.total) * 100 : 0;
-    kpis.push({ name:'Tasks Completed', actual:tm.completed+' / '+tm.total, score:complScore, source:'Tasks Manager', target:'100%' });
-  }
-
-  // 7. Avg Turnaround (from Tasks Manager)
-  if(tm.connected && tm.completed > 0){
-    var turnScore = tm.avgTurnaround <= 3 ? 100 : tm.avgTurnaround <= 5 ? 75 : 50;
-    kpis.push({ name:'Avg Turnaround', actual:tm.avgTurnaround.toFixed(1)+' days', score:turnScore, source:'Tasks Manager', target:'≤3 days' });
-  }
-
-  // 8. Staff Evaluation Score (from Self-Eval / Admin Review)
-  if(evals.count > 0 && evals.avgScore != null){
-    var rawEval = evals.avgScore;
-    var evalPct = rawEval <= 5 ? (rawEval / 5) * 100 : rawEval;
-    var evalDisplay = rawEval <= 5 ? rawEval.toFixed(1) + ' / 5' : Math.round(rawEval) + '%';
-    kpis.push({ name:'Staff Evaluation', actual:evalDisplay+' ('+evals.count+' eval'+(evals.count!==1?'s':'')+')', score:evalPct, source:'Self-Eval', target:'5 / 5' });
-  } else {
-    kpis.push({ name:'Staff Evaluation', actual:'No evals yet', score:0, source:'Self-Eval', target:'5 / 5' });
-  }
-
-  // Overall composite
-  var composite = kpis.length > 0 ? kpis.reduce(function(a,k){return a+k.score;},0)/kpis.length : 0;
+  var kpis = r.kpis || [];
+  var composite = r.composite || 0;
   var compColor = perfScoreColor(composite);
   var compLabel = composite >= 95 ? '🏆 Excellent' : composite >= 85 ? '💎 Strong' : composite >= 75 ? '✓ On Track' : '⚠ Needs Improvement';
 
@@ -4755,10 +4704,413 @@ function perfRenderReport(emp, from, to, r){
 
   // ── Footer ──
   html += '<div style="font-size:10px;color:var(--muted);text-align:center;padding:8px;margin-top:8px;">' +
-    'Generated ' + todayPHT() + ' ' + timeStrPHT(true) + ' PHT · All data auto-computed' +
+    'Generated ' + todayPHT() + ' ' + timeStrPHT(true) + ' PHT · All data auto-computed · Staff Evaluation counts toward Overall once there is one' +
   '</div>';
 
   return html;
+}
+
+// ── Performance data, shared by the Performance report and the Incentives tab ──
+// Attendance, hours and lateness are worked out here from the time logs (generatePayroll),
+// against each person's own shift and work week: full-time 6 days, everyone else 5.
+var LATE_GRACE_MIN = 15;   // lateness KPI only counts clock-ins after shift start + 15 min
+
+function perfDays_(from, to){
+  var a = new Date(from+'T00:00:00Z'), b = new Date(to+'T00:00:00Z');
+  return Math.max(0, Math.round((b-a)/86400000) + 1);
+}
+function perfAttendance_(staffRec, payrollEmp, from, to){
+  var logs = (payrollEmp && payrollEmp.logs) || [];
+  var perWeek = (staffRec && staffRec.type === 'full-time') ? 6 : 5;
+  var expected = Math.max(0, Math.round(perfDays_(from, to) * perWeek / 7) - (parseFloat(payrollEmp && payrollEmp.leaveDays)||0));
+  var dates = {};
+  logs.forEach(function(l){ if(l.date) dates[l.date] = 1; });
+  var daysWorked = Object.keys(dates).length;
+  var s = staffRec ? parseTimeToMinutes_(staffRec.shiftStart) : null;
+  var e = staffRec ? parseTimeToMinutes_(staffRec.shiftEnd) : null;
+  var shiftHrs = (s!==null && e!==null && e>s) ? (e-s)/60 : 8;
+  var breakHrs = logs.length ? logs.reduce(function(t,l){ return t+(parseFloat(l.breakMins)||0); },0)/logs.length/60 : 0;
+  var lateMin = 0, lateDays = 0, onTimeDays = 0, otMin = 0, clientFirst = 0;
+  logs.forEach(function(l){
+    var m = lateMinsForLog_(staffRec, l);
+    if(m!==null){
+      lateMin += m;
+      if(m > LATE_GRACE_MIN) lateDays++;
+      if(m === 0) onTimeDays++;
+    }
+    if(l.otStatus !== 'denied') otMin += (parseFloat(l.otHrs)||0)*60;
+    if(hasClientFirstTag_(l.notes)) clientFirst++;
+  });
+  return {
+    expectedDays: expected, daysWorked: daysWorked, perWeek: perWeek,
+    totalHours: (parseFloat(payrollEmp && payrollEmp.totalReg)||0) + (parseFloat(payrollEmp && payrollEmp.totalOT)||0),
+    hoursTarget: expected * Math.max(0, shiftHrs - breakHrs),
+    hasShift: s!==null, lateMin: lateMin, lateDays: lateDays, onTimeDays: onTimeDays,
+    otMin: Math.round(otMin), clientFirst: clientFirst, logs: logs.length
+  };
+}
+
+// Never look past today: future days in the range would count as absences.
+function perfCapTo_(to){ var t = todayPHT(); return to > t ? t : to; }
+
+async function perfFetch_(emp, from, to, payrollEmp){
+  var r = await gas('getPerformanceReport', { adminPin: ADMIN_PIN_STORED, employee: emp, from: from, to: to });
+  if(!r.ok) throw new Error(r.error || 'Failed to load');
+  if(!payrollEmp){
+    var p = await gas('generatePayroll', { adminPin: ADMIN_PIN_STORED, employee: emp, from: from, to: to });
+    if(!p.ok) throw new Error(p.error || 'Failed to load time logs');
+    payrollEmp = (p.report||[]).find(function(x){ return x.name === emp; }) || { logs: [], leaves: [] };
+  }
+  var staffRec = ((ADMIN_DATA && ADMIN_DATA.staff)||[]).find(function(s){ return s.name === emp; });
+  r.att = perfAttendance_(staffRec, payrollEmp, from, to);
+  r.tasksMgr = { connected: false, completed: 0, total: 0, avgTurnaround: 0 };
+  if(TASKS_MGR_URL){
+    try{
+      var tmr = await tasksMgrCall('getTasksForEmployee', { employee: emp, from: from, to: to });
+      if(tmr && tmr.ok){
+        var tasks = tmr.tasks || [];
+        var completed = tasks.filter(function(t){ return t.completedDate || t.completedAt; });
+        var turnarounds = completed.map(function(t){
+          var s = new Date(String(t.createdAt||t.assignedAt||'').slice(0,10));
+          var e2 = new Date(String(t.completedDate||t.completedAt||'').slice(0,10));
+          if(isNaN(s.getTime())||isNaN(e2.getTime())) return null;
+          return (e2-s)/86400000;
+        }).filter(function(v){ return v!==null&&v>=0; });
+        r.tasksMgr = {
+          connected: true,
+          total: tasks.length,
+          completed: completed.length,
+          avgTurnaround: turnarounds.length > 0 ? turnarounds.reduce(function(a,b){return a+b;},0)/turnarounds.length : 0
+        };
+      }
+    }catch(e){ r.tasksMgr.error = e.message; }
+  }
+  r.kpis = perfKpis_(r);
+  r.composite = r.kpis.length ? r.kpis.reduce(function(a,k){ return a+k.score; },0)/r.kpis.length : 0;
+  return r;
+}
+
+function perfKpis_(r){
+  var att = r.att || {};
+  var tasks = r.tasks || {};
+  var tm = r.tasksMgr || {};
+  var evals = r.evals || {};
+  var kpis = [];
+  // 1. Attendance Rate — days worked vs. a 5-day (6 for full-time) week, minus approved leave
+  var attRate = att.expectedDays > 0 ? Math.min(100, (att.daysWorked / att.expectedDays) * 100) : 0;
+  kpis.push({ name:'Attendance Rate', actual: att.daysWorked+' / '+att.expectedDays+' days', score:attRate, source:'TimeLogs', target:att.perWeek+' days/wk' });
+
+  // 2. Hours Worked — against the person's own shift length (less their usual break)
+  var hrsScore = att.hoursTarget > 0 ? Math.min(100, (att.totalHours/att.hoursTarget)*100) : 0;
+  kpis.push({ name:'Hours Worked', actual:(att.totalHours||0).toFixed(1)+'h', score:hrsScore, source:'TimeLogs', target:(att.hoursTarget||0).toFixed(0)+'h' });
+
+  // 3. Punctuality — a day is late only after shift start + 15 min
+  if(att.hasShift){
+    var lateScore = att.daysWorked > 0 ? Math.max(0, 100 - (att.lateDays / att.daysWorked * 100)) : 0;
+    kpis.push({ name:'Punctuality', actual:att.lateDays+' late day'+(att.lateDays!==1?'s':''), score:lateScore, source:'TimeLogs', target:'0 late (15-min grace)' });
+  }
+
+  // 4. Tasks Timed (task timer sessions)
+  var taskTimedScore = Math.min(100, (tasks.totalSessions||0) / Math.max(att.daysWorked||1,1) * 25);
+  kpis.push({ name:'Tasks Timed', actual:(tasks.totalSessions||0)+' sessions', score:taskTimedScore, source:'Task Timer', target:'~4/day' });
+
+  // 5. Productive Time Tracked
+  var prodTarget = (att.daysWorked||1) * 240;
+  var prodScore = prodTarget > 0 ? Math.min(100, (tasks.totalMin||0)/prodTarget*100) : 0;
+  kpis.push({ name:'Productive Time', actual:_formatDuration((tasks.totalMin||0)*60000), score:prodScore, source:'Task Timer', target:_formatDuration(prodTarget*60000) });
+
+  // 6. Tasks Completed (from Tasks Manager)
+  if(tm.connected && tm.total > 0){
+    kpis.push({ name:'Tasks Completed', actual:tm.completed+' / '+tm.total, score:(tm.completed / tm.total) * 100, source:'Tasks Manager', target:'100%' });
+  }
+
+  // 7. Avg Turnaround (from Tasks Manager)
+  if(tm.connected && tm.completed > 0){
+    var turnScore = tm.avgTurnaround <= 3 ? 100 : tm.avgTurnaround <= 5 ? 75 : 50;
+    kpis.push({ name:'Avg Turnaround', actual:tm.avgTurnaround.toFixed(1)+' days', score:turnScore, source:'Tasks Manager', target:'≤3 days' });
+  }
+
+  // 8. Staff Evaluation — left out of Overall until there is one, instead of counting as 0%
+  if(evals.count > 0 && evals.avgScore != null){
+    var rawEval = evals.avgScore;
+    var evalPct = rawEval <= 5 ? (rawEval / 5) * 100 : rawEval;
+    var evalDisplay = rawEval <= 5 ? rawEval.toFixed(1) + ' / 5' : Math.round(rawEval) + '%';
+    kpis.push({ name:'Staff Evaluation', actual:evalDisplay+' ('+evals.count+' eval'+(evals.count!==1?'s':'')+')', score:evalPct, source:'Self-Eval', target:'5 / 5' });
+  }
+  return kpis;
+}
+
+// ════════════════════════════════════════
+//  INCENTIVES — monthly staff incentives
+//  Sales come from the POS backend (invoices, expenses, feedback), attendance from
+//  TimeCommand's own time logs. Nothing is paid unless the month's profit margin
+//  (net income ÷ revenue) is at least 30%.
+// ════════════════════════════════════════
+var INC = {
+  gateMargin: 0.30,
+  commissionRate: 0.10,                          // of each add-on's price
+  split: { seller: 0.25, doer: 0.50, fund: 0.25 }, // Photographer and Photo Edit (5)
+  personShare: 0.75,                             // referral + feedback bonuses: rest goes to the fund
+  overall: [{ min: 95, amt: 1000 }, { min: 85, amt: 500 }], overallMinAttendance: 90,
+  punctual: 300,                                 // clocked in by shift start every day, no grace
+  noClientFirst: 300,                            // never arrived after a client
+  lateOt: 300, lateCapMin: 60, otCapMin: 90,     // under 1h late and under 1.5h OT for the month
+  review: 50, reviewCap: 500,                    // 5-star review naming them (all theirs)
+  teamReviewGoal: 15, teamReview: 300,           // each, when the studio gets 15+ new 5-star reviews
+  organic: 75, organicCap: 1500,                 // per organic booking, into the fund
+  referral: 75, referralCap: 750,
+  feedbackPct: 50, feedback: 300                 // Studio Manager, when 50%+ of clients return the form
+};
+var INC_DATA = null;
+
+// Same rules as the POS invoice screen
+function incIsCommission_(i){ return !/digital/i.test(i.name) && (i.isAddon || /frame|print|8R|A4/i.test(i.name)); }
+function incIsSplit_(i){ return /^(photographer|photo edit \(5\))$/i.test(String(i.name||'').trim()); }
+
+var CLIENT_FIRST_TAG = '[Client arrived first]';
+function hasClientFirstTag_(notes){ return String(notes||'').indexOf(CLIENT_FIRST_TAG) !== -1; }
+
+function incPeso(n){ return '₱'+(Math.round((n||0)*100)/100).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:2}); }
+function incMonthRange_(ym){
+  var y = parseInt(ym.slice(0,4),10), m = parseInt(ym.slice(5,7),10);
+  var last = new Date(y, m, 0).getDate();
+  var from = ym+'-01', to = ym+'-'+String(last).padStart(2,'0');
+  return { from: from, to: perfCapTo_(to), monthEnd: to };
+}
+function incStaff_(){ return ((ADMIN_DATA && ADMIN_DATA.staff)||[]).filter(function(s){ return s.status !== 'inactive'; }); }
+// POS staff names are short ("Justine"); TimeCommand has full names. Match on the first name.
+function incMatchStaff_(posName){
+  var first = String(posName||'').trim().toLowerCase().split(/\s+/)[0];
+  if(!first) return null;
+  var hit = incStaff_().find(function(s){ return String(s.name).toLowerCase().split(/\s+/)[0] === first; });
+  return hit ? hit.name : null;
+}
+function incInputs_(ym){
+  try{ return JSON.parse(localStorage.getItem('tc_inc_'+ym) || '') || {}; }catch(e){ return {}; }
+}
+function incSaveInput(field, name, val){
+  if(!INC_DATA) return;
+  var inp = INC_DATA.inputs;
+  var n = Math.max(0, parseFloat(val)||0);
+  if(name){ inp[field] = inp[field] || {}; inp[field][name] = n; } else inp[field] = n;
+  try{ localStorage.setItem('tc_inc_'+INC_DATA.ym, JSON.stringify(inp)); }catch(e){}
+  incRender();
+}
+
+function incInit(){
+  var el = document.getElementById('inc-month');
+  if(el && !el.value) el.value = todayPHT().slice(0,7);
+}
+
+async function incGenerate(){
+  var ym = document.getElementById('inc-month').value;
+  var out = document.getElementById('inc-output');
+  if(!ym){ showToast('⚠ Pick a month'); return; }
+  var rg = incMonthRange_(ym);
+  if(rg.to < rg.from){ showToast('⚠ That month hasn\'t started yet'); return; }
+  out.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;">💰 Pulling sales from the POS and attendance from time logs…</div>';
+  try{
+    var res = await Promise.all([
+      posGas('getAll', {}),
+      gas('generatePayroll', { adminPin: ADMIN_PIN_STORED, employee: '', from: rg.from, to: rg.to })
+    ]);
+    var pos = res[0] || {}, pay = res[1] || {};
+    if(!pay.ok) throw new Error(pay.error || 'Could not load time logs');
+    if(!Array.isArray(pos.transactions)) throw new Error('Could not load sales from the POS');
+
+    var inMonth = function(d){ return String(d||'').slice(0,7) === ym; };
+    var txns = pos.transactions.filter(function(t){ return inMonth(t.date) && !String(t.invoiceNum||'').startsWith('[VOID]'); });
+    var revenue = txns.reduce(function(s,t){ return s+(+t.total||0); },0);
+    // Same as the POS financial report: expenses sheet, or the EOD reports when that month has none
+    var exps = (pos.expenses||[]).filter(function(e){ return inMonth(e.date); });
+    if(!exps.length) (pos.eodReports||[]).filter(function(r){ return inMonth(r.date); }).forEach(function(r){
+      var ex = r.expenses; if(typeof ex === 'string'){ try{ ex = JSON.parse(ex); }catch(e){ ex = []; } }
+      (Array.isArray(ex)?ex:[]).forEach(function(e){ exps.push(e); });
+    });
+    var expenses = exps.reduce(function(s,e){ return s+(+e.amt||0); },0);
+    var feedback = (pos.feedback||[]).filter(function(f){ return inMonth(f.date||f.timestamp||f.createdAt); }).length;
+
+    var lines = [];
+    txns.forEach(function(t){
+      var items = []; try{ items = Array.isArray(t.items) ? t.items : JSON.parse(t.items||'[]'); }catch(e){}
+      items.forEach(function(i){
+        if(!i || !incIsCommission_(i)) return;
+        lines.push({ inv: t.invoiceNum, date: String(t.date).slice(0,10), client: t.clientName, name: i.name,
+          amount: (+i.price||0)*(+i.qty||1), split: incIsSplit_(i),
+          soldBy: incMatchStaff_(i.soldBy), doneBy: incMatchStaff_(i.doneBy),
+          soldRaw: i.soldBy||'', doneRaw: i.doneBy||'' });
+      });
+    });
+
+    var staff = incStaff_();
+    var perf = {};
+    for(var k=0; k<staff.length; k++){
+      var nm = staff[k].name;
+      var pe = (pay.report||[]).find(function(x){ return x.name === nm; }) || { logs: [], leaves: [] };
+      try{ perf[nm] = await perfFetch_(nm, rg.from, rg.to, pe); }
+      catch(e){ perf[nm] = { error: e.message, att: perfAttendance_(staff[k], pe, rg.from, rg.to), composite: 0 }; }
+    }
+
+    INC_DATA = { ym: ym, range: rg, revenue: revenue, expenses: expenses, txnCount: txns.length,
+      feedback: feedback, lines: lines, staff: staff, perf: perf, inputs: incInputs_(ym) };
+    incRender();
+  }catch(e){
+    out.innerHTML = '<div style="color:var(--danger);padding:14px;font-size:12px;border:1px solid var(--danger);border-radius:8px;background:rgba(192,84,74,.05);">❌ '+esc(e.message)+'</div>';
+  }
+}
+
+function incCompute_(){
+  var d = INC_DATA, inp = d.inputs, people = {};
+  d.staff.forEach(function(s){ people[s.name] = { rec: s, items: [] }; });
+  var fund = [];
+  var add = function(name, label, detail, amt){ if(people[name]) people[name].items.push({ label: label, detail: detail, amt: amt }); };
+
+  // Add-on commission
+  var addonFund = 0, unassigned = 0;
+  d.lines.forEach(function(l){
+    var c = l.amount * INC.commissionRate;
+    if(!l.split){ addonFund += c; return; }
+    var seller = c*INC.split.seller, doer = c*INC.split.doer;
+    addonFund += c*INC.split.fund;
+    if(l.soldBy && people[l.soldBy]) add(l.soldBy, 'Sold '+l.name, l.client+' · '+l.date, seller); else { addonFund += seller; unassigned++; }
+    if(l.doneBy && people[l.doneBy]) add(l.doneBy, 'Did '+l.name, l.client+' · '+l.date, doer); else { addonFund += doer; unassigned++; }
+  });
+  fund.push({ label: 'Add-on commission (10%)', detail: d.lines.length+' add-on line'+(d.lines.length!==1?'s':''), amt: addonFund });
+
+  var organic = parseFloat(inp.organic)||0;
+  fund.push({ label: 'Organic bookings', detail: organic+' × '+incPeso(INC.organic)+' (cap '+incPeso(INC.organicCap)+')', amt: Math.min(INC.organicCap, organic*INC.organic) });
+
+  var teamReviews = parseFloat(inp.teamReviews)||0;
+  var fbPct = d.txnCount ? Math.round(d.feedback / d.txnCount * 100) : 0;
+
+  d.staff.forEach(function(s){
+    var p = d.perf[s.name] || {}, att = p.att || {};
+    var worked = att.daysWorked > 0;
+    var attRate = att.expectedDays > 0 ? att.daysWorked/att.expectedDays*100 : 0;
+    var comp = p.composite || 0;
+    var tier = INC.overall.find(function(t){ return comp >= t.min; });
+    if(p.error) add(s.name, 'Overall score', '⚠ '+p.error, 0);
+    else if(tier && attRate >= INC.overallMinAttendance) add(s.name, 'Overall score', Math.round(comp)+'% (attendance '+Math.round(attRate)+'%)', tier.amt);
+    else add(s.name, 'Overall score', Math.round(comp)+'% — needs '+INC.overall[INC.overall.length-1].min+'%+ and attendance '+INC.overallMinAttendance+'%+', 0);
+
+    if(att.hasShift){
+      var allOnTime = worked && att.onTimeDays === att.logs;
+      add(s.name, 'On time every day', worked ? att.onTimeDays+' of '+att.logs+' days by shift start' : 'no days worked', allOnTime ? INC.punctual : 0);
+    }
+    add(s.name, 'Never arrived after a client', worked ? (att.clientFirst ? att.clientFirst+' incident'+(att.clientFirst!==1?'s':'') : 'no incidents') : 'no days worked', worked && !att.clientFirst ? INC.noClientFirst : 0);
+    var lateOk = att.lateMin < INC.lateCapMin, otOk = att.otMin < INC.otCapMin;
+    add(s.name, 'Under 1h late & under 1.5h OT', Math.floor(att.lateMin/60)+'h '+(att.lateMin%60)+'m late · '+Math.floor(att.otMin/60)+'h '+(att.otMin%60)+'m OT', worked && lateOk && otOk ? INC.lateOt : 0);
+
+    var rv = parseFloat((inp.reviews||{})[s.name])||0;
+    if(rv) add(s.name, '5-star reviews naming them', rv+' × '+incPeso(INC.review)+' (cap '+incPeso(INC.reviewCap)+')', Math.min(INC.reviewCap, rv*INC.review));
+
+    var rf = parseFloat((inp.referrals||{})[s.name])||0;
+    if(rf){
+      var rfAmt = Math.min(INC.referralCap, rf*INC.referral);
+      add(s.name, 'Referral / repeat bookings', rf+' × '+incPeso(INC.referral)+' · '+Math.round(INC.personShare*100)+'% theirs', rfAmt*INC.personShare);
+      fund.push({ label: 'Referral share', detail: s.name.split(' ')[0]+' · '+Math.round((1-INC.personShare)*100)+'%', amt: rfAmt*(1-INC.personShare) });
+    }
+    if(/manager/i.test(s.role||'')){
+      if(fbPct >= INC.feedbackPct){
+        add(s.name, 'Feedback forms returned', fbPct+'% of clients · '+Math.round(INC.personShare*100)+'% theirs', INC.feedback*INC.personShare);
+        fund.push({ label: 'Feedback share', detail: s.name.split(' ')[0]+' · '+Math.round((1-INC.personShare)*100)+'%', amt: INC.feedback*(1-INC.personShare) });
+      } else add(s.name, 'Feedback forms returned', fbPct+'% of clients — needs '+INC.feedbackPct+'%', 0);
+    }
+    add(s.name, 'Team review goal', teamReviews+' of '+INC.teamReviewGoal+' new 5-star reviews', teamReviews >= INC.teamReviewGoal ? INC.teamReview : 0);
+  });
+
+  var fundTotal = fund.reduce(function(t,f){ return t+f.amt; },0);
+  var each = d.staff.length ? fundTotal / d.staff.length : 0;
+  d.staff.forEach(function(s){ add(s.name, 'Incentive fund share', '1 of '+d.staff.length+' equal shares', each); });
+  return { people: people, fund: fund, fundTotal: fundTotal, each: each, unassigned: unassigned, fbPct: fbPct };
+}
+
+function incRender(){
+  var d = INC_DATA, out = document.getElementById('inc-output');
+  if(!d || !out) return;
+  var net = d.revenue - d.expenses;
+  var margin = d.revenue > 0 ? net / d.revenue : 0;
+  var pass = margin >= INC.gateMargin;
+  var c = incCompute_();
+  var inp = d.inputs;
+  var card = 'background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;';
+  var stat = function(lbl, val, col){ return '<div style="flex:1;min-width:110px;"><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;">'+lbl+'</div><div style="font-size:18px;font-weight:800;color:'+(col||'var(--slate)')+';margin-top:2px;">'+val+'</div></div>'; };
+  var html = '';
+
+  html += '<div style="'+card+'border:2px solid '+(pass?'var(--success)':'var(--danger)')+';">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">'+
+      '<div style="font-size:13px;font-weight:700;color:var(--slate);">🎯 30% profit margin gate · '+esc(d.range.from)+' → '+esc(d.range.to)+'</div>'+
+      '<span style="background:'+(pass?'rgba(61,140,110,.12)':'rgba(192,84,74,.1)')+';color:'+(pass?'var(--success)':'var(--danger)')+';padding:4px 10px;border-radius:10px;font-weight:700;font-size:11px;">'+(pass?'✓ Incentives unlocked':'✗ Below 30% — no incentives this month')+'</span>'+
+    '</div>'+
+    '<div style="display:flex;gap:12px;flex-wrap:wrap;">'+
+      stat('Revenue', incPeso(d.revenue))+stat('Expenses', incPeso(d.expenses))+
+      stat('Net income', incPeso(net), net>=0?'var(--success)':'var(--danger)')+
+      stat('Margin', Math.round(margin*1000)/10+'%', pass?'var(--success)':'var(--danger)')+
+    '</div>'+
+    (d.range.to < d.range.monthEnd ? '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Month still running — figures are up to today.</div>' : '')+
+  '</div>';
+
+  var num = function(field, name, val){
+    return '<input class="fi" type="number" min="0" step="1" style="width:80px;padding:5px 8px;" value="'+(val||0)+'" onchange="incSaveInput(\''+field+'\','+(name?'\''+escAttr(name)+'\'':'null')+',this.value)">';
+  };
+  html += '<div style="'+card+'">'+
+    '<div style="font-size:13px;font-weight:700;color:var(--slate);margin-bottom:2px;">📝 Month-end counts</div>'+
+    '<div style="font-size:10px;color:var(--muted);margin-bottom:12px;">Enter these at month end. Saved on this device for '+esc(d.ym)+'.</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;font-size:12px;">'+
+      '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;">Organic bookings (social, DM, Google — not ads) '+num('organic', null, inp.organic)+'</label>'+
+      '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;">New 5-star reviews (whole studio) '+num('teamReviews', null, inp.teamReviews)+'</label>'+
+    '</div>'+
+    '<div style="overflow-x:auto;margin-top:12px;"><table class="dtr-table" style="width:100%;font-size:11px;min-width:420px;"><thead><tr><th>Staff</th><th>5-star reviews naming them</th><th>Referral / repeat bookings they secured</th></tr></thead><tbody>'+
+      d.staff.map(function(s){
+        return '<tr><td><strong>'+esc(s.name)+'</strong><div style="font-size:9px;color:var(--muted);">'+esc(s.role||'')+'</div></td>'+
+          '<td>'+num('reviews', s.name, (inp.reviews||{})[s.name])+'</td>'+
+          '<td>'+num('referrals', s.name, (inp.referrals||{})[s.name])+'</td></tr>';
+      }).join('')+
+    '</tbody></table></div>'+
+    '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Feedback forms (from the POS): '+d.feedback+' of '+d.txnCount+' invoiced clients = <strong>'+c.fbPct+'%</strong></div>'+
+  '</div>';
+
+  html += '<div style="'+card+'">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div style="font-size:13px;font-weight:700;color:var(--slate);">🤝 Incentive fund</div>'+
+    '<div style="font-size:12px;"><strong>'+incPeso(c.fundTotal)+'</strong> <span style="color:var(--muted);">→ '+incPeso(c.each)+' each</span></div></div>'+
+    c.fund.map(function(f){ return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-top:1px solid var(--border);"><span>'+esc(f.label)+' <span style="color:var(--muted);font-size:10px;">'+esc(f.detail)+'</span></span><strong>'+incPeso(f.amt)+'</strong></div>'; }).join('')+
+    (c.unassigned ? '<div style="font-size:10px;color:var(--gold);margin-top:6px;">⚠ '+c.unassigned+' Photographer / Photo Edit share'+(c.unassigned!==1?'s':'')+' had no "Sold by" or "Done by" in the POS, so '+(c.unassigned!==1?'they went':'it went')+' to the fund.</div>' : '')+
+  '</div>';
+
+  var grand = 0;
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;">';
+  d.staff.forEach(function(s){
+    var p = c.people[s.name], total = p.items.reduce(function(t,i){ return t+i.amt; },0);
+    var paid = pass ? total : 0; grand += paid;
+    var safe = String(s.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    html += '<div style="'+card+'margin:0;">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">'+
+        '<div><div style="font-size:14px;font-weight:800;color:var(--slate);">'+esc(s.name)+'</div><div style="font-size:10px;color:var(--muted);">'+esc(s.role||'')+' · '+esc(s.type||'')+'</div></div>'+
+        '<div style="text-align:right;"><div style="font-size:20px;font-weight:800;color:'+(pass?'var(--success)':'var(--muted)')+';'+(pass?'':'text-decoration:line-through;')+'">'+incPeso(total)+'</div>'+
+        (pass?'':'<div style="font-size:9px;color:var(--danger);">not paid — margin under 30%</div>')+'</div>'+
+      '</div>'+
+      p.items.map(function(i){
+        return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:5px 0;border-top:1px solid var(--border);'+(i.amt?'':'color:var(--muted);')+'">'+
+          '<span>'+(i.amt?'✓ ':'· ')+esc(i.label)+'<div style="font-size:9.5px;color:var(--muted);">'+esc(i.detail)+'</div></span>'+
+          '<strong style="white-space:nowrap;">'+(i.amt?incPeso(i.amt):'—')+'</strong></div>';
+      }).join('')+
+      (pass && total > 0 ? '<button class="btn btn-sm" style="margin-top:10px;background:linear-gradient(135deg,#3d8c6e,#2f6d55);color:#fff;font-weight:700;border:none;" onclick="openPayoutModal(\''+safe+'\','+(Math.round(total*100)/100)+',\''+d.range.from+'\',\''+d.range.monthEnd+'\')">💰 Record Incentive Payout</button>' : '')+
+    '</div>';
+  });
+  html += '</div>';
+  html += '<div style="font-size:11px;color:var(--muted);text-align:center;padding:12px;">Total incentives to pay: <strong style="color:var(--slate);">'+incPeso(grand)+'</strong>'+
+    (d.revenue>0 && grand ? ' · '+(Math.round(grand/(d.revenue-d.expenses)*1000)/10)+'% of net income' : '')+'</div>';
+
+  if(d.lines.length){
+    html += '<details style="'+card+'"><summary style="font-size:12px;font-weight:700;cursor:pointer;">🧾 Add-on lines from the POS ('+d.lines.length+')</summary>'+
+      '<div style="overflow-x:auto;margin-top:10px;"><table class="dtr-table" style="width:100%;font-size:11px;min-width:520px;"><thead><tr><th>Date</th><th>Invoice</th><th>Client</th><th>Add-on</th><th>Amount</th><th>Sold by</th><th>Done by</th></tr></thead><tbody>'+
+      d.lines.map(function(l){
+        return '<tr><td>'+esc(l.date)+'</td><td>'+esc(l.inv)+'</td><td>'+esc(l.client)+'</td><td>'+esc(l.name)+'</td><td>'+incPeso(l.amount)+'</td>'+
+          '<td>'+(l.split ? esc(l.soldBy||l.soldRaw||'—') : '<span style="color:var(--muted);">fund</span>')+'</td>'+
+          '<td>'+(l.split ? esc(l.doneBy||l.doneRaw||'—') : '')+'</td></tr>';
+      }).join('')+'</tbody></table></div></details>';
+  }
+  out.innerHTML = html;
 }
 
 // ════════════════════════════════════════
