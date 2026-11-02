@@ -4682,6 +4682,20 @@ function perfRenderReport(emp, from, to, r){
     }).join('') +
       '</tbody></table></div></div>';
 
+  // ── Client jobs that were late or are still open ──
+  var jbm = (r.jobs && r.jobs.missed) || [];
+  if(jbm.length){
+    html += '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--slate);margin-bottom:10px;">📦 Client jobs not done on time ('+jbm.length+')</div>' +
+      jbm.slice(0, 15).map(function(j){
+        return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:6px 0;border-top:1px solid var(--border);">' +
+          '<span><strong>'+esc(j.client)+'</strong> · '+esc(j.title)+'<div style="font-size:10px;color:var(--muted);">Deadline '+esc(j.deadline)+'</div></span>' +
+          '<span style="white-space:nowrap;color:'+(j.done?'var(--gold)':'var(--danger)')+';font-weight:600;">'+(j.done ? 'Done '+esc(j.doneOn)+' (late)' : 'Still open')+'</span></div>';
+      }).join('') +
+      (jbm.length > 15 ? '<div style="font-size:10px;color:var(--muted);margin-top:6px;">…and '+(jbm.length-15)+' more</div>' : '') +
+    '</div>';
+  }
+
   // ── Task Breakdown (by category from Task Timer) ──
   if(tasks.byCategory && tasks.byCategory.length){
     html += '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;">' +
@@ -4795,9 +4809,52 @@ async function perfFetch_(emp, from, to, payrollEmp){
       }
     }catch(e){ r.tasksMgr.error = e.message; }
   }
+  try{ r.jobs = await perfJobs_(emp, from, to); }catch(e){ r.jobs = { error: e.message }; }
   r.kpis = perfKpis_(r);
   r.composite = r.kpis.length ? r.kpis.reduce(function(a,k){ return a+k.score; },0)/r.kpis.length : 0;
   return r;
+}
+
+// ── Client jobs (from the Tasks app, stored with the POS) ──
+// A job counts for the person it is assigned to (the Tasks app credits whoever finishes an
+// unassigned job). Its deadline is the due date; auto-made editing jobs carry the shoot date,
+// so they get the studio's 10-day editing lead time on top.
+var _posAll = null;
+async function posAllCached_(){
+  if(_posAll && Date.now() - _posAll.at < 5*60*1000) return _posAll.d;
+  var d = await posGas('getAll', {});
+  _posAll = { at: Date.now(), d: d || {} };
+  return _posAll.d;
+}
+var JOB_EDIT_DAYS = 10;
+function jobDeadline_(t){
+  var due = String(t.due || t.dueDate || '').slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(due)) return '';
+  if(/^(editing|edit)$/i.test(String(t.type||''))){
+    var d = new Date(due+'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + JOB_EDIT_DAYS);
+    due = d.toISOString().slice(0,10);
+  }
+  return due;
+}
+async function perfJobs_(emp, from, to){
+  var pos = await posAllCached_();
+  var first = String(emp||'').trim().toLowerCase().split(/\s+/)[0];
+  var today = todayPHT(), out = { count: 0, done: 0, onTime: 0, missed: [] };
+  (pos.tasks || []).forEach(function(t){
+    if(!String(t.client||'').trim() || /^(evaluation|content)$/i.test(String(t.type||''))) return;
+    if(String(t.assignedTo||'').trim().toLowerCase().split(/\s+/)[0] !== first) return;
+    var done = /^(delivered|pickup)$/i.test(String(t.stage||'')) || String(t.done) === 'true' || String(t.done) === 'True';
+    if(!done && String(t.archived) === 'true' || !done && String(t.archived) === 'True') return;   // dropped, not finished
+    var dl = jobDeadline_(t);
+    if(!dl || dl < from || dl > to) return;
+    if(!done && dl >= today) return;                       // not due yet
+    var doneOn = String(t.completedAt || t.updatedAt || '').slice(0,10);
+    var onTime = done && (!doneOn || doneOn <= dl);
+    out.count++; if(done) out.done++; if(onTime) out.onTime++;
+    if(!onTime) out.missed.push({ client: t.client, title: t.title || t.type, deadline: dl, done: done, doneOn: doneOn });
+  });
+  out.missed.sort(function(a,b){ return a.deadline < b.deadline ? -1 : 1; });
+  return out;
 }
 
 function perfKpis_(r){
@@ -4840,7 +4897,13 @@ function perfKpis_(r){
     kpis.push({ name:'Avg Turnaround', actual:tm.avgTurnaround.toFixed(1)+' days', score:turnScore, source:'Tasks Manager', target:'≤3 days' });
   }
 
-  // 8. Staff Evaluation — left out of Overall until there is one, instead of counting as 0%
+  // 8. Client Jobs — the person's client jobs (Tasks app) whose deadline fell in the range, finished on time
+  var jb = r.jobs || {};
+  if(jb.count > 0){
+    kpis.push({ name:'Client Jobs', actual: jb.done+' of '+jb.count+' done · '+jb.onTime+' on time', score: jb.onTime/jb.count*100, source:'Tasks app', target:'All on time' });
+  }
+
+  // 9. Staff Evaluation — left out of Overall until there is one, instead of counting as 0%
   if(evals.count > 0 && evals.avgScore != null){
     var rawEval = evals.avgScore;
     var evalPct = rawEval <= 5 ? (rawEval / 5) * 100 : rawEval;
@@ -5072,6 +5135,7 @@ async function incGenerate(){
       gas('generatePayroll', { adminPin: ADMIN_PIN_STORED, employee: '', from: rg.from, to: rg.to })
     ]);
     var pos = res[0] || {}, pay = res[1] || {};
+    _posAll = { at: Date.now(), d: pos };
     if(!pay.ok) throw new Error(pay.error || 'Could not load time logs');
     if(!Array.isArray(pos.transactions)) throw new Error('Could not load sales from the POS');
 
