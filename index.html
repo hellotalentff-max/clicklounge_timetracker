@@ -783,7 +783,7 @@ button:disabled{opacity:.5;cursor:default;}
           <textarea class="fi" id="lf-notes" rows="2" placeholder="Reason for manual entry…"></textarea>
         </div>
         <label style="grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
-          <input type="checkbox" id="lf-clientfirst"> ⚠ Client arrived before this staff member <span style="color:var(--muted);font-size:10px;">(loses the "never arrived after a client" incentive)</span>
+          <input type="checkbox" id="lf-clientfirst"> ⚠ Client arrived before this staff member <span style="color:var(--muted);font-size:10px;">(takes 10 points off their Attendance score this month)</span>
         </label>
       </div>
       <div id="lf-preview" style="background:var(--light);border-radius:8px;padding:10px;margin-top:12px;font-size:11px;color:var(--muted);"></div>
@@ -4867,6 +4867,13 @@ async function perfJobs_(emp, from, to){
   return out;
 }
 
+// Attendance: days worked vs. expected, less 10 points each time a client arrived before them
+var CLIENT_FIRST_PENALTY = 10;
+function perfAttScore_(att){
+  var rate = att.expectedDays > 0 ? Math.min(100, (att.daysWorked / att.expectedDays) * 100) : 0;
+  return Math.max(0, rate - (att.clientFirst||0) * CLIENT_FIRST_PENALTY);
+}
+
 function perfKpis_(r){
   var att = r.att || {};
   var tasks = r.tasks || {};
@@ -4874,8 +4881,8 @@ function perfKpis_(r){
   var evals = r.evals || {};
   var kpis = [];
   // 1. Attendance Rate — days worked vs. a 5-day (6 for full-time) week, minus approved leave
-  var attRate = att.expectedDays > 0 ? Math.min(100, (att.daysWorked / att.expectedDays) * 100) : 0;
-  kpis.push({ name:'Attendance Rate', actual: att.daysWorked+' / '+att.expectedDays+' days', score:attRate, source:'TimeLogs', target:att.perWeek+' days/wk' });
+  var attRate = perfAttScore_(att);
+  kpis.push({ name:'Attendance Rate', actual: att.daysWorked+' / '+att.expectedDays+' days'+(att.clientFirst ? ' · '+att.clientFirst+'× client arrived first (−'+(att.clientFirst*CLIENT_FIRST_PENALTY)+')' : ''), score:attRate, source:'TimeLogs', target:att.perWeek+' days/wk, before clients' });
 
   // 2. Hours Worked — against the person's own shift length (less their usual break)
   var hrsScore = att.hoursTarget > 0 ? Math.min(100, (att.totalHours/att.hoursTarget)*100) : 0;
@@ -4936,10 +4943,9 @@ var INC = {
   split: { seller: 0.25, doer: 0.50, fund: 0.25 }, // Photographer and Photo Edit (5)
   overall: [{ min: 95, amt: 1000 }, { min: 85, amt: 500 }], overallMinAttendance: 90,
   punctual: 300,                                 // clocked in by shift start every day, no grace
-  noClientFirst: 300,                            // never arrived after a client
   lateOt: 300, lateCapMin: 60, otCapMin: 90,     // under 1h late and under 1.5h OT for the month
   review: 50, reviewCap: 500,                    // 5-star review naming them (all theirs)
-  teamReviewGoal: 15, teamReview: 300,           // each, when the studio gets 15+ new 5-star reviews
+  teamReviewPct: 95, teamReview: 300,            // each, when 95%+ of the month's new reviews are 5-star
   // Team bonus into the fund: organic bookings up 50% on last month AND a feedback form from every client
   teamBonus: 900, organicGrowth: 0.5, feedbackPct: 100,
   organicBaseline: { '2026-10': 26 },            // months counted before this tab kept them
@@ -5223,7 +5229,9 @@ function incCompute_(){
   });
   fund.push({ label: 'Add-on commission (10%)', detail: staffSold+' sold by staff'+(clientAsked?' · '+clientAsked+' client-asked or not picked (no commission)':''), amt: addonFund });
 
-  var teamReviews = parseFloat(inp.teamReviews)||0;
+  var teamReviews = parseFloat(inp.teamReviews)||0, allReviews = parseFloat(inp.allReviews)||0;
+  var revPct = allReviews > 0 ? Math.floor(Math.min(teamReviews, allReviews) / allReviews * 100) : 0;
+  var revHit = allReviews > 0 && revPct >= INC.teamReviewPct;
   var fbPct = d.txnCount ? Math.floor(d.feedback / d.txnCount * 100) : 0;
   var org = incOrganicTarget_(d.ym), organic = parseFloat(inp.organic)||0;
   var orgHit = org.target > 0 && organic >= org.target, fbHit = d.txnCount > 0 && fbPct >= INC.feedbackPct;
@@ -5235,7 +5243,7 @@ function incCompute_(){
   d.staff.forEach(function(s){
     var p = d.perf[s.name] || {}, att = p.att || {};
     var worked = att.daysWorked > 0;
-    var attRate = att.expectedDays > 0 ? att.daysWorked/att.expectedDays*100 : 0;
+    var attRate = perfAttScore_(att);
     var comp = p.composite || 0;
     var tier = INC.overall.find(function(t){ return comp >= t.min; });
     if(p.error) add(s.name, 'Overall score', '⚠ '+p.error, 0);
@@ -5246,14 +5254,13 @@ function incCompute_(){
       var allOnTime = worked && att.onTimeDays === att.logs;
       add(s.name, 'On time every day', worked ? att.onTimeDays+' of '+att.logs+' days by shift start' : 'no days worked', allOnTime ? INC.punctual : 0);
     }
-    add(s.name, 'Never arrived after a client', worked ? (att.clientFirst ? att.clientFirst+' incident'+(att.clientFirst!==1?'s':'') : 'no incidents') : 'no days worked', worked && !att.clientFirst ? INC.noClientFirst : 0);
     var lateOk = att.lateMin < INC.lateCapMin, otOk = att.otMin < INC.otCapMin;
     add(s.name, 'Under 1h late & under 1.5h OT', Math.floor(att.lateMin/60)+'h '+(att.lateMin%60)+'m late · '+Math.floor(att.otMin/60)+'h '+(att.otMin%60)+'m OT', worked && lateOk && otOk ? INC.lateOt : 0);
 
     var rv = parseFloat((inp.reviews||{})[s.name])||0;
     if(rv) add(s.name, '5-star reviews naming them', rv+' × '+incPeso(INC.review)+' (cap '+incPeso(INC.reviewCap)+')', Math.min(INC.reviewCap, rv*INC.review));
 
-    add(s.name, 'Team review goal', teamReviews+' of '+INC.teamReviewGoal+' new 5-star reviews', teamReviews >= INC.teamReviewGoal ? INC.teamReview : 0);
+    add(s.name, 'Team review goal', allReviews ? teamReviews+' of '+allReviews+' new reviews were 5-star ('+revPct+'%) — needs '+INC.teamReviewPct+'%' : 'no new reviews counted yet', revHit ? INC.teamReview : 0);
   });
 
   // Sharing the fund: each day's add-on money is split equally among the staff clocked in that day.
@@ -5328,7 +5335,8 @@ function incRender(){
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;font-size:12px;">'+
       '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;">Organic bookings (social, DM, Google, word of mouth — not ads) '+num('organic', null, inp.organic)+'</label>'+
       '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;">Referral / repeat bookings (whole team) '+num('teamReferrals', null, inp.teamReferrals)+'</label>'+
-      '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;">New 5-star reviews (whole studio) '+num('teamReviews', null, inp.teamReviews)+'</label>'+
+      '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;">New reviews this month, any rating (whole studio) '+num('allReviews', null, inp.allReviews)+'</label>'+
+      '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;">… of those, 5-star '+num('teamReviews', null, inp.teamReviews)+'</label>'+
     '</div>'+
     (function(){ var o = incOrganicTarget_(d.ym);
       return '<div style="font-size:10.5px;color:var(--muted);margin-top:8px;">Team bonus ('+incPeso(INC.teamBonus)+'): organic bookings need '+(o.target ? '<strong>'+o.target+'</strong> ('+incMonthName_(o.prevMonth)+' had '+o.prev+', +50%)' : 'last month\'s count first — '+incMonthName_(o.prevMonth)+' has none saved')+
