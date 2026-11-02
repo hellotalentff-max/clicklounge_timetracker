@@ -660,7 +660,7 @@ button:disabled{opacity:.5;cursor:default;}
         <div class="aform-title">💰 Staff Incentives</div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
           Sales and add-ons come from the POS; attendance, lateness and OT from the time logs. The studio keeps at least 40% profit after incentives: in a tight month every bonus is cut by the same share, and below 40% nothing is paid.
-          Add-ons pay 10%: Photographer, Photo Edit (5) and the Acrylic Frame with Gold Studs split 25% seller / 50% the one who did it / 25% fund. Any other add-on a staff member offered puts its 10% in the fund; one the client asked for on their own pays nothing. Organic bookings also go to the fund. Each day's add-on money is shared by whoever was clocked in that day; the rest is shared by days worked. Digital copies don't count.
+          Add-ons pay 10%: Photographer, Photo Edit (5) and the Acrylic Frame with Gold Studs split 25% seller / 50% the one who did it / 25% fund. Any other add-on a staff member offered puts its 10% in the fund; one the client asked for on their own pays nothing. Referral / repeat bookings add ₱75 each, and the ₱900 team bonus is earned when organic bookings are up 50% on last month and every client filled in a feedback form. Each day's add-on money is shared by whoever was clocked in that day; the rest is shared by days worked. Digital copies don't count.
         </div>
         <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
           <div class="fg" style="margin:0;"><label class="fl">Month</label><input class="fi" type="month" id="inc-month"></div>
@@ -4934,16 +4934,16 @@ var INC = {
   gateMargin: 0.40,                              // profit the studio keeps after incentives
   commissionRate: 0.10,                          // of each add-on's price
   split: { seller: 0.25, doer: 0.50, fund: 0.25 }, // Photographer and Photo Edit (5)
-  personShare: 0.75,                             // referral + feedback bonuses: rest goes to the fund
   overall: [{ min: 95, amt: 1000 }, { min: 85, amt: 500 }], overallMinAttendance: 90,
   punctual: 300,                                 // clocked in by shift start every day, no grace
   noClientFirst: 300,                            // never arrived after a client
   lateOt: 300, lateCapMin: 60, otCapMin: 90,     // under 1h late and under 1.5h OT for the month
   review: 50, reviewCap: 500,                    // 5-star review naming them (all theirs)
   teamReviewGoal: 15, teamReview: 300,           // each, when the studio gets 15+ new 5-star reviews
-  organic: 75, organicCap: 1500,                 // per organic booking, into the fund
-  referral: 75, referralCap: 750,
-  feedbackPct: 50, feedback: 300                 // Studio Manager, when 50%+ of clients return the form
+  // Team bonus into the fund: organic bookings up 50% on last month AND a feedback form from every client
+  teamBonus: 900, organicGrowth: 0.5, feedbackPct: 100,
+  organicBaseline: { '2026-10': 26 },            // months counted before this tab kept them
+  referral: 75, referralCap: 750                 // team: each referral / repeat booking, into the fund
 };
 var INC_DATA = null;
 
@@ -5192,6 +5192,16 @@ async function incGenerate(){
   }
 }
 
+// Organic bookings target: last month's count + 50%. Last month's count comes from that
+// month's saved counts on this device, or the baseline for months before the tab kept them.
+function incOrganicTarget_(ym){
+  var y = +ym.slice(0,4), m = +ym.slice(5,7) - 1; if(m < 1){ m = 12; y--; }
+  var pym = y + '-' + String(m).padStart(2,'0');
+  var saved = incInputs_(pym).organic;
+  var prev = (saved != null && saved !== '') ? +saved : (INC.organicBaseline[pym] != null ? INC.organicBaseline[pym] : null);
+  return { prevMonth: pym, prev: prev, target: prev != null ? Math.ceil(prev * (1 + INC.organicGrowth)) : 0 };
+}
+
 function incCompute_(){
   var d = INC_DATA, inp = d.inputs, people = {};
   d.staff.forEach(function(s){ people[s.name] = { rec: s, items: [] }; });
@@ -5213,11 +5223,14 @@ function incCompute_(){
   });
   fund.push({ label: 'Add-on commission (10%)', detail: staffSold+' sold by staff'+(clientAsked?' · '+clientAsked+' client-asked or not picked (no commission)':''), amt: addonFund });
 
-  var organic = parseFloat(inp.organic)||0;
-  fund.push({ label: 'Organic bookings', detail: organic+' × '+incPeso(INC.organic)+' (cap '+incPeso(INC.organicCap)+')', amt: Math.min(INC.organicCap, organic*INC.organic) });
-
   var teamReviews = parseFloat(inp.teamReviews)||0;
-  var fbPct = d.txnCount ? Math.round(d.feedback / d.txnCount * 100) : 0;
+  var fbPct = d.txnCount ? Math.floor(d.feedback / d.txnCount * 100) : 0;
+  var org = incOrganicTarget_(d.ym), organic = parseFloat(inp.organic)||0;
+  var orgHit = org.target > 0 && organic >= org.target, fbHit = d.txnCount > 0 && fbPct >= INC.feedbackPct;
+  fund.push({ label: 'Team bonus', detail: 'organic bookings '+organic+' of '+(org.target||'?')+' needed ('+(org.prev!=null?org.prev+' last month +50%':'last month not recorded')+') '+(orgHit?'✓':'✗')+
+    ' · feedback '+fbPct+'% of clients (needs '+INC.feedbackPct+'%) '+(fbHit?'✓':'✗'), amt: orgHit && fbHit ? INC.teamBonus : 0 });
+  var refs = parseFloat(inp.teamReferrals)||0;
+  if(refs) fund.push({ label: 'Referral / repeat bookings', detail: refs+' × '+incPeso(INC.referral)+' (cap '+incPeso(INC.referralCap)+')', amt: Math.min(INC.referralCap, refs*INC.referral) });
 
   d.staff.forEach(function(s){
     var p = d.perf[s.name] || {}, att = p.att || {};
@@ -5240,23 +5253,11 @@ function incCompute_(){
     var rv = parseFloat((inp.reviews||{})[s.name])||0;
     if(rv) add(s.name, '5-star reviews naming them', rv+' × '+incPeso(INC.review)+' (cap '+incPeso(INC.reviewCap)+')', Math.min(INC.reviewCap, rv*INC.review));
 
-    var rf = parseFloat((inp.referrals||{})[s.name])||0;
-    if(rf){
-      var rfAmt = Math.min(INC.referralCap, rf*INC.referral);
-      add(s.name, 'Referral / repeat bookings', rf+' × '+incPeso(INC.referral)+' · '+Math.round(INC.personShare*100)+'% theirs', rfAmt*INC.personShare);
-      fund.push({ label: 'Referral share', detail: s.name.split(' ')[0]+' · '+Math.round((1-INC.personShare)*100)+'%', amt: rfAmt*(1-INC.personShare) });
-    }
-    if(/manager/i.test(s.role||'')){
-      if(fbPct >= INC.feedbackPct){
-        add(s.name, 'Feedback forms returned', fbPct+'% of clients · '+Math.round(INC.personShare*100)+'% theirs', INC.feedback*INC.personShare);
-        fund.push({ label: 'Feedback share', detail: s.name.split(' ')[0]+' · '+Math.round((1-INC.personShare)*100)+'%', amt: INC.feedback*(1-INC.personShare) });
-      } else add(s.name, 'Feedback forms returned', fbPct+'% of clients — needs '+INC.feedbackPct+'%', 0);
-    }
     add(s.name, 'Team review goal', teamReviews+' of '+INC.teamReviewGoal+' new 5-star reviews', teamReviews >= INC.teamReviewGoal ? INC.teamReview : 0);
   });
 
   // Sharing the fund: each day's add-on money is split equally among the staff clocked in that day.
-  // Money with no day (organic bookings, referral and feedback shares), and any day nobody
+  // Money with no day (the team bonus, referral / repeat bookings), and any day nobody
   // clocked in, is shared by days worked in the month.
   var fundTotal = fund.reduce(function(t,f){ return t+f.amt; },0);
   var worked = function(name){ return Object.keys((d.days||{})[name]||{}).length; };
@@ -5325,17 +5326,20 @@ function incRender(){
     '<div style="font-size:13px;font-weight:700;color:var(--slate);margin-bottom:2px;">📝 Month-end counts</div>'+
     '<div style="font-size:10px;color:var(--muted);margin-bottom:12px;">Enter these at month end. Saved on this device for '+esc(d.ym)+'.</div>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;font-size:12px;">'+
-      '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;">Organic bookings (social, DM, Google — not ads) '+num('organic', null, inp.organic)+'</label>'+
+      '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;">Organic bookings (social, DM, Google, word of mouth — not ads) '+num('organic', null, inp.organic)+'</label>'+
+      '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;">Referral / repeat bookings (whole team) '+num('teamReferrals', null, inp.teamReferrals)+'</label>'+
       '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;">New 5-star reviews (whole studio) '+num('teamReviews', null, inp.teamReviews)+'</label>'+
     '</div>'+
-    '<div style="overflow-x:auto;margin-top:12px;"><table class="dtr-table" style="width:100%;font-size:11px;min-width:420px;"><thead><tr><th>Staff</th><th>5-star reviews naming them</th><th>Referral / repeat bookings they secured</th></tr></thead><tbody>'+
+    (function(){ var o = incOrganicTarget_(d.ym);
+      return '<div style="font-size:10.5px;color:var(--muted);margin-top:8px;">Team bonus ('+incPeso(INC.teamBonus)+'): organic bookings need '+(o.target ? '<strong>'+o.target+'</strong> ('+incMonthName_(o.prevMonth)+' had '+o.prev+', +50%)' : 'last month\'s count first — '+incMonthName_(o.prevMonth)+' has none saved')+
+        ', and every client must fill in a feedback form.</div>'; })()+
+    '<div style="overflow-x:auto;margin-top:12px;"><table class="dtr-table" style="width:100%;font-size:11px;min-width:320px;"><thead><tr><th>Staff</th><th>5-star reviews naming them</th></tr></thead><tbody>'+
       d.staff.map(function(s){
         return '<tr><td><strong>'+esc(s.name)+'</strong><div style="font-size:9px;color:var(--muted);">'+esc(s.role||'')+'</div></td>'+
-          '<td>'+num('reviews', s.name, (inp.reviews||{})[s.name])+'</td>'+
-          '<td>'+num('referrals', s.name, (inp.referrals||{})[s.name])+'</td></tr>';
+          '<td>'+num('reviews', s.name, (inp.reviews||{})[s.name])+'</td></tr>';
       }).join('')+
     '</tbody></table></div>'+
-    '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Feedback forms (from the POS): '+d.feedback+' of '+d.txnCount+' invoiced clients = <strong>'+c.fbPct+'%</strong></div>'+
+    '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Feedback forms (from the POS): '+d.feedback+' of '+d.txnCount+' invoiced clients = <strong>'+c.fbPct+'%</strong> (team bonus needs 100%)</div>'+
     '<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px;">'+
       (d.range.to < d.range.monthEnd
         ? (inp.progress ? '<span style="font-size:11px;color:var(--success);font-weight:600;">✓ Progress shown to staff (as of '+esc(inp.progress)+')</span> ' : '')+
@@ -5350,7 +5354,7 @@ function incRender(){
     '<div style="font-size:12px;"><strong>'+incPeso(c.fundTotal)+'</strong> <span style="color:var(--muted);">→ shared by days clocked in</span></div></div>'+
     c.fund.map(function(f){ return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-top:1px solid var(--border);"><span>'+esc(f.label)+' <span style="color:var(--muted);font-size:10px;">'+esc(f.detail)+'</span></span><strong>'+incPeso(f.amt)+'</strong></div>'; }).join('')+
     (c.unassigned ? '<div style="font-size:10px;color:var(--gold);margin-top:6px;">⚠ '+c.unassigned+' Photographer / Photo Edit / Acrylic Frame share'+(c.unassigned!==1?'s':'')+' had no "Sold by" or "Done by" in the POS, so '+(c.unassigned!==1?'they went':'it went')+' to the fund.</div>' : '')+
-    '<div style="font-size:10.5px;color:var(--muted);margin:10px 0 4px;">Each day\'s add-on money goes, in equal parts, to whoever was clocked in that day. Organic bookings, referral and feedback shares'+(c.noOneIn?', and '+incPeso(c.noOneIn)+' from days nobody clocked in,':'')+' make up the monthly pool ('+incPeso(c.pool)+'), shared by days worked.</div>'+
+    '<div style="font-size:10.5px;color:var(--muted);margin:10px 0 4px;">Each day\'s add-on money goes, in equal parts, to whoever was clocked in that day. The team bonus, referral / repeat bookings'+(c.noOneIn?', and '+incPeso(c.noOneIn)+' from days nobody clocked in,':'')+' make up the monthly pool ('+incPeso(c.pool)+'), shared by days worked.</div>'+
     d.staff.map(function(s){ var sh = c.shares[s.name];
       return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-top:1px dashed var(--border);"><span>'+esc(s.name)+' <span style="color:var(--muted);font-size:10px;">'+sh.days+' day'+(sh.days!==1?'s':'')+' · '+incPeso(sh.fromDays)+' + '+incPeso(sh.fromPool)+'</span></span><strong>'+incPeso(sh.total)+'</strong></div>';
     }).join('')+
