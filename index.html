@@ -654,7 +654,7 @@ button:disabled{opacity:.5;cursor:default;}
         <div class="aform-title">💰 Staff Incentives</div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
           Sales and add-ons come from the POS; attendance, lateness and OT from the time logs. The studio keeps at least 40% profit after incentives: in a tight month every bonus is cut by the same share, and below 40% nothing is paid.
-          Add-ons pay 10%: Photographer and Photo Edit (5) split 25% seller / 50% the one who did it / 25% fund; every other add-on and each organic booking goes to the fund, shared equally. Digital copies don't count.
+          Add-ons pay 10%: Photographer, Photo Edit (5) and the Acrylic Frame with Gold Studs split 25% seller / 50% the one who did it / 25% fund. Any other add-on a staff member offered puts its 10% in the fund; one the client asked for on their own pays nothing. Organic bookings also go to the fund, shared equally. Digital copies don't count.
         </div>
         <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
           <div class="fg" style="margin:0;"><label class="fl">Month</label><input class="fi" type="month" id="inc-month"></div>
@@ -4868,7 +4868,8 @@ var INC_DATA = null;
 
 // Same rules as the POS invoice screen
 function incIsCommission_(i){ return !/digital/i.test(i.name) && (i.isAddon || /frame|print|8R|A4/i.test(i.name)); }
-function incIsSplit_(i){ return /^(photographer|photo edit \(5\))$/i.test(String(i.name||'').trim()); }
+function incIsSplit_(i){ return /^(photographer|photo edit \(5\)|acrylic frame w\/ gold studs \(8x24\))$/i.test(String(i.name||'').trim()); }
+var INC_CLIENT_ASKED = '__client__';   // POS "Sold by: Client asked"
 
 var CLIENT_FIRST_TAG = '[Client arrived first]';
 function hasClientFirstTag_(notes){ return String(notes||'').indexOf(CLIENT_FIRST_TAG) !== -1; }
@@ -5012,16 +5013,17 @@ function incCompute_(){
   var add = function(name, label, detail, amt){ if(people[name]) people[name].items.push({ label: label, detail: detail, amt: amt }); };
 
   // Add-on commission
-  var addonFund = 0, unassigned = 0;
+  var addonFund = 0, unassigned = 0, staffSold = 0, clientAsked = 0;
   d.lines.forEach(function(l){
     var c = l.amount * INC.commissionRate;
-    if(!l.split){ addonFund += c; return; }
+    // Other add-ons: 10% to the fund only when a staff member sold it; client-requested pays nothing
+    if(!l.split){ if(l.soldBy){ addonFund += c; staffSold++; } else clientAsked++; return; }
     var seller = c*INC.split.seller, doer = c*INC.split.doer;
     addonFund += c*INC.split.fund;
     if(l.soldBy && people[l.soldBy]) add(l.soldBy, 'Sold '+l.name, l.client+' · '+l.date, seller); else { addonFund += seller; unassigned++; }
     if(l.doneBy && people[l.doneBy]) add(l.doneBy, 'Did '+l.name, l.client+' · '+l.date, doer); else { addonFund += doer; unassigned++; }
   });
-  fund.push({ label: 'Add-on commission (10%)', detail: d.lines.length+' add-on line'+(d.lines.length!==1?'s':''), amt: addonFund });
+  fund.push({ label: 'Add-on commission (10%)', detail: staffSold+' sold by staff'+(clientAsked?' · '+clientAsked+' client-asked or not picked (no commission)':''), amt: addonFund });
 
   var organic = parseFloat(inp.organic)||0;
   fund.push({ label: 'Organic bookings', detail: organic+' × '+incPeso(INC.organic)+' (cap '+incPeso(INC.organicCap)+')', amt: Math.min(INC.organicCap, organic*INC.organic) });
@@ -5169,7 +5171,7 @@ function incRender(){
       '<div style="overflow-x:auto;margin-top:10px;"><table class="dtr-table" style="width:100%;font-size:11px;min-width:520px;"><thead><tr><th>Date</th><th>Invoice</th><th>Client</th><th>Add-on</th><th>Amount</th><th>Sold by</th><th>Done by</th></tr></thead><tbody>'+
       d.lines.map(function(l){
         return '<tr><td>'+esc(l.date)+'</td><td>'+esc(l.inv)+'</td><td>'+esc(l.client)+'</td><td>'+esc(l.name)+'</td><td>'+incPeso(l.amount)+'</td>'+
-          '<td>'+(l.split ? esc(l.soldBy||l.soldRaw||'—') : '<span style="color:var(--muted);">fund</span>')+'</td>'+
+          '<td>'+(l.soldBy ? esc(l.soldBy) : l.soldRaw===INC_CLIENT_ASKED ? '<span style="color:var(--muted);">Client asked</span>' : esc(l.soldRaw||'—'))+'</td>'+
           '<td>'+(l.split ? esc(l.doneBy||l.doneRaw||'—') : '')+'</td></tr>';
       }).join('')+'</tbody></table></div></details>';
   }
