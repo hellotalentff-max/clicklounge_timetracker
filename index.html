@@ -392,6 +392,7 @@ button:disabled{opacity:.5;cursor:default;}
     <!-- Tabs -->
     <div class="staff-tabs">
       <button class="stab on" onclick="sTab('records')" id="stab-records">📋 My Records</button>
+      <button class="stab" onclick="sTab('inc')" id="stab-inc">💰 My Incentives</button>
       <button class="stab" onclick="sTab('tasks')" id="stab-tasks">⏱ My Tasks</button>
       <button class="stab" onclick="sTab('leave')" id="stab-leave">📅 Leave</button>
       <button class="stab" onclick="sTab('eval')" id="stab-eval">⭐ Self-Eval <span class="badge-n" id="eval-note-badge" style="display:none;">0</span></button>
@@ -401,6 +402,11 @@ button:disabled{opacity:.5;cursor:default;}
     <!-- My Records Tab -->
     <div id="stab-panel-records">
       <div id="s-records-wrap"><p style="color:var(--muted);font-size:12px;text-align:center;padding:20px;">Loading records…</p></div>
+    </div>
+
+    <!-- My Incentives Tab -->
+    <div id="stab-panel-inc" style="display:none;">
+      <div id="s-my-inc"><p style="color:var(--muted);font-size:12px;text-align:center;padding:20px;">Loading…</p></div>
     </div>
 
     <!-- My Tasks Tab -->
@@ -1584,13 +1590,14 @@ function renderLeaveHistory(){
 }
 
 function sTab(id){
-  ['records','tasks','leave','eval','profile'].forEach(function(t){
+  ['records','inc','tasks','leave','eval','profile'].forEach(function(t){
     var btn = document.getElementById('stab-'+t);
     var pnl = document.getElementById('stab-panel-'+t);
     if(btn) btn.classList.toggle('on',t===id);
     if(pnl) pnl.style.display=t===id?'':'none';
   });
   if(id === 'profile') renderMyProfile();
+  if(id === 'inc') loadMyIncentives();
   if(id === 'eval'){ renderSelfEval(); loadMyNotes(); }
   if(id === 'tasks'){ loadTaskSessions(); restoreTaskSession(); }
 }
@@ -1611,7 +1618,7 @@ async function loadMyNotes(){
     // DEFENSIVE: re-filter client-side so this user can ONLY ever see their own notes
     var myNameL = String(CURR_USER.name||'').trim().toLowerCase();
     var mine = r.notes.filter(function(n){
-      return String(n.employee||'').trim().toLowerCase() === myNameL;
+      return String(n.employee||'').trim().toLowerCase() === myNameL && !isIncNote_(n);
     });
     var open = mine.filter(function(n){ return n.status === 'open'; });
     if(!open.length){
@@ -1670,7 +1677,7 @@ async function checkEvalNotesBadge(){
     // DEFENSIVE: only count notes assigned to THIS user
     var myNameL = String(CURR_USER.name||'').trim().toLowerCase();
     var mine = r.notes.filter(function(n){
-      return String(n.employee||'').trim().toLowerCase() === myNameL;
+      return String(n.employee||'').trim().toLowerCase() === myNameL && !isIncNote_(n);
     });
     var open = mine.filter(function(n){ return n.status === 'open'; });
     var lastRead = localStorage.getItem(_evalNotesReadKey()) || '2000-01-01';
@@ -3059,6 +3066,7 @@ function openReviewModal(id){
   (async function(){
     try{
       var r = await gas('getEvalNotes', { adminPin: ADMIN_PIN_STORED, employee: e.employee, status: 'open' });
+      if(r && r.notes) r.notes = r.notes.filter(function(n){ return !isIncNote_(n); });
       var target = document.getElementById('review-cb-notes');
       if(!target) return;
       if(r.ok && r.notes && r.notes.length){
@@ -4532,7 +4540,7 @@ async function cbLoadNotes(){
   try{
     var r = await gas('getEvalNotes', { adminPin: ADMIN_PIN_STORED, employee: emp, status: status });
     if(!r.ok) throw new Error(r.error||'Failed');
-    CB_NOTES = r.notes || [];
+    CB_NOTES = (r.notes || []).filter(function(n){ return !isIncNote_(n); });
     if(!CB_NOTES.length){
       box.innerHTML = '<div style="text-align:center;padding:12px;color:var(--muted);font-size:11px;">No '+(status||'')+' notes'+(emp?' for '+esc(emp):'')+'.</div>';
       return;
@@ -4941,12 +4949,94 @@ function incOpenMonth(ym){
   document.getElementById('inc-month').value = ym;
   incGenerate();
 }
-function incMarkDone(){
+async function incMarkDone(){
   if(!INC_DATA) return;
   INC_DATA.inputs.done = true;
   try{ localStorage.setItem('tc_inc_'+INC_DATA.ym, JSON.stringify(INC_DATA.inputs)); }catch(e){}
   incReminder(); incRender();
-  showToast('✅ '+incMonthName_(INC_DATA.ym)+' counts marked as entered');
+  showToast('✅ '+incMonthName_(INC_DATA.ym)+' counts marked as entered — publishing to staff…');
+  await incPublish();
+}
+
+// ── Staff can see their own incentives ──
+// Each person's result is saved as a feedback note they can read with their own PIN
+// (getMyEvalNotes). The tag keeps these notes off the Communication Board and Self-Eval.
+var INC_NOTE_TAG = '[[INCENTIVES ';
+function isIncNote_(n){ return String((n && n.note) || '').indexOf(INC_NOTE_TAG) === 0; }
+function incGate_(c){
+  var d = INC_DATA, net = d.revenue - d.expenses;
+  var owed = d.staff.reduce(function(t,s){ return t + c.people[s.name].items.reduce(function(a,i){ return a+i.amt; },0); },0);
+  var room = Math.max(0, net - INC.gateMargin*d.revenue);
+  return owed > 0 ? Math.min(1, room/owed) : (room > 0 ? 1 : 0);
+}
+async function incPublish(){
+  if(!INC_DATA) return;
+  var d = INC_DATA, c = incCompute_(), factor = incGate_(c), ym = d.ym, tag = INC_NOTE_TAG + ym + ']] ';
+  var ok = 0, fail = 0;
+  try{
+    var old = await gas('getEvalNotes', { adminPin: ADMIN_PIN_STORED, employee: '', status: '' });
+    var stale = ((old && old.notes) || []).filter(function(n){ return String(n.note||'').indexOf(tag) === 0; });
+    for(var j=0; j<stale.length; j++){ try{ await gas('deleteEvalNote', { adminPin: ADMIN_PIN_STORED, id: stale[j].id }); }catch(e){} }
+  }catch(e){}
+  for(var k=0; k<d.staff.length; k++){
+    var s = d.staff[k], items = c.people[s.name].items;
+    var earned = items.reduce(function(a,i){ return a+i.amt; },0);
+    var body = { m: ym, st: factor >= 1 ? 'on' : 'not', e: Math.round(earned*100)/100, p: Math.round(earned*factor*100)/100,
+      i: items.map(function(i){ return [i.label, i.detail, Math.round(i.amt*100)/100]; }) };
+    try{
+      var r = await gas('saveEvalNote', { adminPin: ADMIN_PIN_STORED, employee: s.name, note: tag + JSON.stringify(body), createdBy: 'Incentives' });
+      if(r && r.ok) ok++; else fail++;
+    }catch(e){ fail++; }
+  }
+  showToast((fail ? '⚠ ' : '✅ ') + incMonthName_(ym) + ' incentives published to ' + ok + ' staff' + (fail ? ', ' + fail + ' failed' : ''));
+}
+
+async function loadMyIncentives(){
+  var box = document.getElementById('s-my-inc');
+  if(!box || !CURR_USER) return;
+  box.innerHTML = '<p style="color:var(--muted);font-size:12px;text-align:center;padding:20px;">Loading…</p>';
+  try{
+    var r = await gas('getMyEvalNotes', { name: CURR_USER.name, pin: CURR_PIN });
+    var myNameL = String(CURR_USER.name||'').trim().toLowerCase();
+    var byMonth = {};
+    ((r && r.notes) || []).forEach(function(n){
+      if(String(n.employee||'').trim().toLowerCase() !== myNameL || !isIncNote_(n)) return;
+      try{
+        var b = JSON.parse(String(n.note).slice(String(n.note).indexOf(']] ') + 3));
+        if(!byMonth[b.m] || String(n.createdAt||'') > byMonth[b.m].at) byMonth[b.m] = { at: String(n.createdAt||''), b: b };
+      }catch(e){}
+    });
+    var months = Object.keys(byMonth).sort().reverse();
+    if(!months.length){
+      box.innerHTML = '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;font-size:12px;color:var(--muted);line-height:1.6;">'+
+        'Your incentives for last month will show here once they are finalised, before payday on the 5th.</div>';
+      return;
+    }
+    var payday = function(ym){ var y = +ym.slice(0,4), m = +ym.slice(5,7) + 1; if(m > 12){ m = 1; y++; } return incMonthName_(y+'-'+String(m).padStart(2,'0')) + ' 5'; };
+    box.innerHTML = months.map(function(ym, idx){
+      var b = byMonth[ym].b, on = b.st === 'on';
+      var card =
+        '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;">'+
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;">'+
+            '<div><div style="font-size:15px;font-weight:800;color:var(--slate);">'+esc(incMonthName_(ym))+' '+esc(ym.slice(0,4))+'</div>'+
+            '<div style="font-size:10px;color:var(--muted);">Payday '+esc(payday(ym))+'</div></div>'+
+            '<span style="padding:4px 10px;border-radius:10px;font-weight:700;font-size:11px;background:'+(on?'rgba(61,140,110,.12)':'rgba(215,144,104,.14)')+';color:'+(on?'var(--success)':'var(--gold)')+';">Studio profit goal: '+(on?'✓ On track':'Not yet')+'</span>'+
+          '</div>'+
+          b.i.map(function(it){
+            return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:6px 0;border-top:1px solid var(--border);'+(it[2]?'':'color:var(--muted);')+'">'+
+              '<span>'+(it[2]?'✓ ':'· ')+esc(it[0])+'<div style="font-size:10px;color:var(--muted);">'+esc(it[1])+'</div></span>'+
+              '<strong style="white-space:nowrap;">'+(it[2]?incPeso(it[2]):'—')+'</strong></div>';
+          }).join('')+
+          '<div style="display:flex;justify-content:space-between;font-size:12px;padding:8px 0 0;border-top:2px solid var(--border);"><span>You earned</span><strong>'+incPeso(b.e)+'</strong></div>'+
+          '<div style="display:flex;justify-content:space-between;font-size:14px;padding-top:4px;"><span style="font-weight:700;">Your payout</span><strong style="color:'+(b.p?'var(--success)':'var(--muted)')+';">'+incPeso(b.p)+'</strong></div>'+
+          (on ? '' : '<div style="font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.5;">'+
+            (b.p ? 'The studio didn\'t fully reach its profit goal this month, so every bonus was reduced by the same share.' : 'The studio didn\'t reach its profit goal this month, so no incentives are paid. Your results still count toward your performance.')+'</div>')+
+        '</div>';
+      return idx === 0 ? card : '<details style="margin-bottom:10px;"><summary style="font-size:12px;cursor:pointer;color:var(--muted);">'+esc(incMonthName_(ym))+' '+esc(ym.slice(0,4))+' · '+incPeso(b.p)+'</summary>'+card+'</details>';
+    }).join('');
+  }catch(e){
+    box.innerHTML = '<p style="color:var(--danger);font-size:12px;padding:12px;">Couldn\'t load your incentives: '+esc(e.message)+'</p>';
+  }
 }
 
 async function incGenerate(){
@@ -5149,7 +5239,7 @@ function incRender(){
     '</tbody></table></div>'+
     '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Feedback forms (from the POS): '+d.feedback+' of '+d.txnCount+' invoiced clients = <strong>'+c.fbPct+'%</strong></div>'+
     '<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px;">'+
-      (inp.done ? '<span style="font-size:11px;color:var(--success);font-weight:600;">✓ Counts entered</span>'
+      (inp.done ? '<span style="font-size:11px;color:var(--success);font-weight:600;">✓ Counts entered · shown to staff</span> <button class="btn btn-outline btn-sm" onclick="incPublish()">↻ Update what staff see</button>'
                 : '<button class="btn btn-t btn-sm" onclick="incMarkDone()">✓ Done — counts entered</button>')+
     '</div>'+
   '</div>';
