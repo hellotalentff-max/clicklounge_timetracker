@@ -5165,7 +5165,19 @@ async function incGenerate(){
       (Array.isArray(ex)?ex:[]).forEach(function(e){ exps.push(e); });
     });
     var expenses = exps.reduce(function(s,e){ return s+(+e.amt||0); },0);
-    var feedback = (pos.feedback||[]).filter(function(f){ return inMonth(f.date||f.timestamp||f.createdAt); }).length;
+    // Feedback only counts when it came through the form sent with the drive link. Those rows
+    // arrive one column off in the sheet (the date sits in "id", the gallery title in "email"),
+    // so read the date and email from whichever field holds them. Each client counts once.
+    var fbSeen = {};
+    (pos.feedback||[]).forEach(function(f){
+      var vals = Object.keys(f).map(function(k){ return String(f[k]==null?'':f[k]); });
+      var viaLink = /^\d{4}-\d{2}-\d{2}/.test(String(f.id||''));
+      var dt = vals.find(function(v){ return /^\d{4}-\d{2}-\d{2}/.test(v); }) || '';
+      if(!viaLink || !inMonth(dt)) return;
+      var who = (vals.find(function(v){ return /@/.test(v); }) || vals.join('|')).trim().toLowerCase();
+      fbSeen[who] = true;
+    });
+    var feedback = Object.keys(fbSeen).length;
 
     var lines = [];
     txns.forEach(function(t){
@@ -5347,7 +5359,7 @@ function incRender(){
           '<td>'+num('reviews', s.name, (inp.reviews||{})[s.name])+'</td></tr>';
       }).join('')+
     '</tbody></table></div>'+
-    '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Feedback forms (from the POS): '+d.feedback+' of '+d.txnCount+' invoiced clients = <strong>'+c.fbPct+'%</strong> (team bonus needs 100%)</div>'+
+    '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Feedback forms (sent with the drive link): '+d.feedback+' of '+d.txnCount+' invoiced clients = <strong>'+c.fbPct+'%</strong> (team bonus needs 100%)</div>'+
     '<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px;">'+
       (d.range.to < d.range.monthEnd
         ? (inp.progress ? '<span style="font-size:11px;color:var(--success);font-weight:600;">✓ Progress shown to staff (as of '+esc(inp.progress)+')</span> ' : '')+
