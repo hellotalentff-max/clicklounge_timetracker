@@ -654,7 +654,7 @@ button:disabled{opacity:.5;cursor:default;}
         <div class="aform-title">💰 Staff Incentives</div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
           Sales and add-ons come from the POS; attendance, lateness and OT from the time logs. The studio keeps at least 40% profit after incentives: in a tight month every bonus is cut by the same share, and below 40% nothing is paid.
-          Add-ons pay 10%: Photographer, Photo Edit (5) and the Acrylic Frame with Gold Studs split 25% seller / 50% the one who did it / 25% fund. Any other add-on a staff member offered puts its 10% in the fund; one the client asked for on their own pays nothing. Organic bookings also go to the fund, shared equally. Digital copies don't count.
+          Add-ons pay 10%: Photographer, Photo Edit (5) and the Acrylic Frame with Gold Studs split 25% seller / 50% the one who did it / 25% fund. Any other add-on a staff member offered puts its 10% in the fund; one the client asked for on their own pays nothing. Organic bookings also go to the fund. Each day's add-on money is shared by whoever was clocked in that day; the rest is shared by days worked. Digital copies don't count.
         </div>
         <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
           <div class="fg" style="margin:0;"><label class="fl">Month</label><input class="fi" type="month" id="inc-month"></div>
@@ -4990,16 +4990,18 @@ async function incGenerate(){
     });
 
     var staff = incStaff_();
-    var perf = {};
+    var perf = {}, days = {};
     for(var k=0; k<staff.length; k++){
       var nm = staff[k].name;
       var pe = (pay.report||[]).find(function(x){ return x.name === nm; }) || { logs: [], leaves: [] };
+      days[nm] = {};
+      (pe.logs||[]).forEach(function(l){ if(l.date) days[nm][String(l.date).slice(0,10)] = true; });
       try{ perf[nm] = await perfFetch_(nm, rg.from, rg.to, pe); }
       catch(e){ perf[nm] = { error: e.message, att: perfAttendance_(staff[k], pe, rg.from, rg.to), composite: 0 }; }
     }
 
     INC_DATA = { ym: ym, range: rg, revenue: revenue, expenses: expenses, txnCount: txns.length,
-      feedback: feedback, lines: lines, staff: staff, perf: perf, inputs: incInputs_(ym) };
+      feedback: feedback, lines: lines, staff: staff, perf: perf, days: days, inputs: incInputs_(ym) };
     incRender();
   }catch(e){
     out.innerHTML = '<div style="color:var(--danger);padding:14px;font-size:12px;border:1px solid var(--danger);border-radius:8px;background:rgba(192,84,74,.05);">❌ '+esc(e.message)+'</div>';
@@ -5014,14 +5016,16 @@ function incCompute_(){
 
   // Add-on commission
   var addonFund = 0, unassigned = 0, staffSold = 0, clientAsked = 0;
+  var dayFund = {};   // add-on fund money by the day it was sold
+  var toFund = function(l, x){ addonFund += x; dayFund[l.date] = (dayFund[l.date]||0) + x; };
   d.lines.forEach(function(l){
     var c = l.amount * INC.commissionRate;
     // Other add-ons: 10% to the fund only when a staff member sold it; client-requested pays nothing
-    if(!l.split){ if(l.soldBy){ addonFund += c; staffSold++; } else clientAsked++; return; }
+    if(!l.split){ if(l.soldBy){ toFund(l, c); staffSold++; } else clientAsked++; return; }
     var seller = c*INC.split.seller, doer = c*INC.split.doer;
-    addonFund += c*INC.split.fund;
-    if(l.soldBy && people[l.soldBy]) add(l.soldBy, 'Sold '+l.name, l.client+' · '+l.date, seller); else { addonFund += seller; unassigned++; }
-    if(l.doneBy && people[l.doneBy]) add(l.doneBy, 'Did '+l.name, l.client+' · '+l.date, doer); else { addonFund += doer; unassigned++; }
+    toFund(l, c*INC.split.fund);
+    if(l.soldBy && people[l.soldBy]) add(l.soldBy, 'Sold '+l.name, l.client+' · '+l.date, seller); else { toFund(l, seller); unassigned++; }
+    if(l.doneBy && people[l.doneBy]) add(l.doneBy, 'Did '+l.name, l.client+' · '+l.date, doer); else { toFund(l, doer); unassigned++; }
   });
   fund.push({ label: 'Add-on commission (10%)', detail: staffSold+' sold by staff'+(clientAsked?' · '+clientAsked+' client-asked or not picked (no commission)':''), amt: addonFund });
 
@@ -5067,10 +5071,26 @@ function incCompute_(){
     add(s.name, 'Team review goal', teamReviews+' of '+INC.teamReviewGoal+' new 5-star reviews', teamReviews >= INC.teamReviewGoal ? INC.teamReview : 0);
   });
 
+  // Sharing the fund: each day's add-on money is split equally among the staff clocked in that day.
+  // Money with no day (organic bookings, referral and feedback shares), and any day nobody
+  // clocked in, is shared by days worked in the month.
   var fundTotal = fund.reduce(function(t,f){ return t+f.amt; },0);
-  var each = d.staff.length ? fundTotal / d.staff.length : 0;
-  d.staff.forEach(function(s){ add(s.name, 'Incentive fund share', '1 of '+d.staff.length+' equal shares', each); });
-  return { people: people, fund: fund, fundTotal: fundTotal, each: each, unassigned: unassigned, fbPct: fbPct };
+  var worked = function(name){ return Object.keys((d.days||{})[name]||{}).length; };
+  var shares = {}; d.staff.forEach(function(s){ shares[s.name] = { days: worked(s.name), fromDays: 0, fromPool: 0 }; });
+  var pool = fundTotal - addonFund, noOneIn = 0;
+  Object.keys(dayFund).forEach(function(dt){
+    var who = d.staff.filter(function(s){ return ((d.days||{})[s.name]||{})[dt]; });
+    if(!who.length){ pool += dayFund[dt]; noOneIn += dayFund[dt]; return; }
+    who.forEach(function(s){ shares[s.name].fromDays += dayFund[dt]/who.length; });
+  });
+  var totalDays = d.staff.reduce(function(t,s){ return t + shares[s.name].days; },0);
+  d.staff.forEach(function(s){
+    var sh = shares[s.name];
+    sh.fromPool = totalDays ? pool * sh.days / totalDays : 0;
+    sh.total = sh.fromDays + sh.fromPool;
+    add(s.name, 'Incentive fund share', sh.days+' day'+(sh.days!==1?'s':'')+' clocked in · '+incPeso(sh.fromDays)+' from add-ons sold on those days + '+incPeso(sh.fromPool)+' of the monthly pool', sh.total);
+  });
+  return { people: people, fund: fund, fundTotal: fundTotal, shares: shares, pool: pool, noOneIn: noOneIn, unassigned: unassigned, fbPct: fbPct };
 }
 
 function incRender(){
@@ -5136,9 +5156,13 @@ function incRender(){
 
   html += '<div style="'+card+'">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div style="font-size:13px;font-weight:700;color:var(--slate);">🤝 Incentive fund</div>'+
-    '<div style="font-size:12px;"><strong>'+incPeso(c.fundTotal)+'</strong> <span style="color:var(--muted);">→ '+incPeso(c.each)+' each</span></div></div>'+
+    '<div style="font-size:12px;"><strong>'+incPeso(c.fundTotal)+'</strong> <span style="color:var(--muted);">→ shared by days clocked in</span></div></div>'+
     c.fund.map(function(f){ return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-top:1px solid var(--border);"><span>'+esc(f.label)+' <span style="color:var(--muted);font-size:10px;">'+esc(f.detail)+'</span></span><strong>'+incPeso(f.amt)+'</strong></div>'; }).join('')+
-    (c.unassigned ? '<div style="font-size:10px;color:var(--gold);margin-top:6px;">⚠ '+c.unassigned+' Photographer / Photo Edit share'+(c.unassigned!==1?'s':'')+' had no "Sold by" or "Done by" in the POS, so '+(c.unassigned!==1?'they went':'it went')+' to the fund.</div>' : '')+
+    (c.unassigned ? '<div style="font-size:10px;color:var(--gold);margin-top:6px;">⚠ '+c.unassigned+' Photographer / Photo Edit / Acrylic Frame share'+(c.unassigned!==1?'s':'')+' had no "Sold by" or "Done by" in the POS, so '+(c.unassigned!==1?'they went':'it went')+' to the fund.</div>' : '')+
+    '<div style="font-size:10.5px;color:var(--muted);margin:10px 0 4px;">Each day\'s add-on money goes, in equal parts, to whoever was clocked in that day. Organic bookings, referral and feedback shares'+(c.noOneIn?', and '+incPeso(c.noOneIn)+' from days nobody clocked in,':'')+' make up the monthly pool ('+incPeso(c.pool)+'), shared by days worked.</div>'+
+    d.staff.map(function(s){ var sh = c.shares[s.name];
+      return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-top:1px dashed var(--border);"><span>'+esc(s.name)+' <span style="color:var(--muted);font-size:10px;">'+sh.days+' day'+(sh.days!==1?'s':'')+' · '+incPeso(sh.fromDays)+' + '+incPeso(sh.fromPool)+'</span></span><strong>'+incPeso(sh.total)+'</strong></div>';
+    }).join('')+
   '</div>';
 
   var grand = 0;
