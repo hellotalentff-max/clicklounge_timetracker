@@ -653,7 +653,7 @@ button:disabled{opacity:.5;cursor:default;}
       <div class="aform">
         <div class="aform-title">💰 Staff Incentives</div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
-          Sales and add-ons come from the POS; attendance, lateness and OT from the time logs. Incentives are paid only when the month's profit margin is 30% or more.
+          Sales and add-ons come from the POS; attendance, lateness and OT from the time logs. The studio keeps at least 40% profit after incentives: in a tight month every bonus is cut by the same share, and below 40% nothing is paid.
           Add-ons pay 10%: Photographer and Photo Edit (5) split 25% seller / 50% the one who did it / 25% fund; every other add-on and each organic booking goes to the fund, shared equally. Digital copies don't count.
         </div>
         <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
@@ -4846,10 +4846,11 @@ function perfKpis_(r){
 //  INCENTIVES — monthly staff incentives
 //  Sales come from the POS backend (invoices, expenses, feedback), attendance from
 //  TimeCommand's own time logs. Nothing is paid unless the month's profit margin
-//  (net income ÷ revenue) is at least 30%.
+//  (net income ÷ revenue) stays at 40% or more after the incentives are paid;
+//  when paying everything would go below that, every amount is cut by the same share.
 // ════════════════════════════════════════
 var INC = {
-  gateMargin: 0.30,
+  gateMargin: 0.40,                              // profit the studio keeps after incentives
   commissionRate: 0.10,                          // of each add-on's price
   split: { seller: 0.25, doer: 0.50, fund: 0.25 }, // Photographer and Photo Edit (5)
   personShare: 0.75,                             // referral + feedback bonuses: rest goes to the fund
@@ -5075,23 +5076,35 @@ function incRender(){
   if(!d || !out) return;
   var net = d.revenue - d.expenses;
   var margin = d.revenue > 0 ? net / d.revenue : 0;
-  var pass = margin >= INC.gateMargin;
   var c = incCompute_();
+  // Pay in full only if the studio still keeps 40% afterwards; otherwise scale every amount down to fit.
+  var owed = d.staff.reduce(function(t,s){ return t + c.people[s.name].items.reduce(function(a,i){ return a+i.amt; },0); },0);
+  var room = Math.max(0, net - INC.gateMargin*d.revenue);
+  var factor = owed > 0 ? Math.min(1, room/owed) : (room > 0 ? 1 : 0);
+  var pass = factor > 0;
+  var gatePct = Math.round(INC.gateMargin*100);
+  var afterMargin = d.revenue > 0 ? (net - owed*factor)/d.revenue : 0;
+  var gateBadge = factor >= 1 ? '✓ Paid in full'
+               : factor > 0 ? '⚠ Paid at '+Math.round(factor*100)+'% to keep '+gatePct+'%'
+               : '✗ Under '+gatePct+'% — no incentives this month';
+  var gateCol = factor >= 1 ? 'var(--success)' : factor > 0 ? 'var(--gold)' : 'var(--danger)';
   var inp = d.inputs;
   var card = 'background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;';
   var stat = function(lbl, val, col){ return '<div style="flex:1;min-width:110px;"><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;">'+lbl+'</div><div style="font-size:18px;font-weight:800;color:'+(col||'var(--slate)')+';margin-top:2px;">'+val+'</div></div>'; };
   var html = '';
 
-  html += '<div style="'+card+'border:2px solid '+(pass?'var(--success)':'var(--danger)')+';">'+
+  html += '<div style="'+card+'border:2px solid '+gateCol+';">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">'+
-      '<div style="font-size:13px;font-weight:700;color:var(--slate);">🎯 30% profit margin gate · '+esc(d.range.from)+' → '+esc(d.range.to)+'</div>'+
-      '<span style="background:'+(pass?'rgba(61,140,110,.12)':'rgba(192,84,74,.1)')+';color:'+(pass?'var(--success)':'var(--danger)')+';padding:4px 10px;border-radius:10px;font-weight:700;font-size:11px;">'+(pass?'✓ Incentives unlocked':'✗ Below 30% — no incentives this month')+'</span>'+
+      '<div style="font-size:13px;font-weight:700;color:var(--slate);">🎯 '+gatePct+'% profit kept after incentives · '+esc(d.range.from)+' → '+esc(d.range.to)+'</div>'+
+      '<span style="background:rgba(0,0,0,.04);color:'+gateCol+';padding:4px 10px;border-radius:10px;font-weight:700;font-size:11px;">'+gateBadge+'</span>'+
     '</div>'+
     '<div style="display:flex;gap:12px;flex-wrap:wrap;">'+
       stat('Revenue', incPeso(d.revenue))+stat('Expenses', incPeso(d.expenses))+
       stat('Net income', incPeso(net), net>=0?'var(--success)':'var(--danger)')+
-      stat('Margin', Math.round(margin*1000)/10+'%', pass?'var(--success)':'var(--danger)')+
+      stat('Margin before incentives', Math.round(margin*1000)/10+'%', margin>=INC.gateMargin?'var(--success)':'var(--danger)')+
+      stat('Margin after incentives', Math.round(afterMargin*1000)/10+'%', afterMargin>=INC.gateMargin-0.0005?'var(--success)':'var(--danger)')+
     '</div>'+
+    '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Earned '+incPeso(owed)+' · room above '+gatePct+'%: '+incPeso(room)+(pass&&factor<1?' · every amount is paid at '+Math.round(factor*100)+'%':'')+'</div>'+
     (d.range.to < d.range.monthEnd ? '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Month still running — figures are up to today.</div>' : '')+
   '</div>';
 
@@ -5130,20 +5143,21 @@ function incRender(){
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;">';
   d.staff.forEach(function(s){
     var p = c.people[s.name], total = p.items.reduce(function(t,i){ return t+i.amt; },0);
-    var paid = pass ? total : 0; grand += paid;
+    var paid = Math.round(total*factor*100)/100; grand += paid;
     var safe = String(s.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
     html += '<div style="'+card+'margin:0;">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">'+
         '<div><div style="font-size:14px;font-weight:800;color:var(--slate);">'+esc(s.name)+'</div><div style="font-size:10px;color:var(--muted);">'+esc(s.role||'')+' · '+esc(s.type||'')+'</div></div>'+
-        '<div style="text-align:right;"><div style="font-size:20px;font-weight:800;color:'+(pass?'var(--success)':'var(--muted)')+';'+(pass?'':'text-decoration:line-through;')+'">'+incPeso(total)+'</div>'+
-        (pass?'':'<div style="font-size:9px;color:var(--danger);">not paid — margin under 30%</div>')+'</div>'+
+        '<div style="text-align:right;"><div style="font-size:20px;font-weight:800;color:'+(pass?'var(--success)':'var(--muted)')+';'+(pass?'':'text-decoration:line-through;')+'">'+incPeso(pass?paid:total)+'</div>'+
+        (!pass?'<div style="font-size:9px;color:var(--danger);">not paid — studio under '+gatePct+'%</div>'
+          : factor<1?'<div style="font-size:9px;color:var(--gold);">earned '+incPeso(total)+' · paid at '+Math.round(factor*100)+'%</div>':'')+'</div>'+
       '</div>'+
       p.items.map(function(i){
         return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:5px 0;border-top:1px solid var(--border);'+(i.amt?'':'color:var(--muted);')+'">'+
           '<span>'+(i.amt?'✓ ':'· ')+esc(i.label)+'<div style="font-size:9.5px;color:var(--muted);">'+esc(i.detail)+'</div></span>'+
           '<strong style="white-space:nowrap;">'+(i.amt?incPeso(i.amt):'—')+'</strong></div>';
       }).join('')+
-      (pass && total > 0 ? '<button class="btn btn-sm" style="margin-top:10px;background:linear-gradient(135deg,#3d8c6e,#2f6d55);color:#fff;font-weight:700;border:none;" onclick="openPayoutModal(\''+safe+'\','+(Math.round(total*100)/100)+',\''+d.range.from+'\',\''+d.range.monthEnd+'\')">💰 Record Incentive Payout</button>' : '')+
+      (pass && paid > 0 ? '<button class="btn btn-sm" style="margin-top:10px;background:linear-gradient(135deg,#3d8c6e,#2f6d55);color:#fff;font-weight:700;border:none;" onclick="openPayoutModal(\''+safe+'\','+paid+',\''+d.range.from+'\',\''+d.range.monthEnd+'\')">💰 Record Incentive Payout</button>' : '')+
     '</div>';
   });
   html += '</div>';
