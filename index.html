@@ -4827,6 +4827,14 @@ async function posAllCached_(){
   return _posAll.d;
 }
 var JOB_EDIT_DAYS = 10;
+// Jobs for sessions before this date are left out (October and earlier were never tracked)
+var JOB_START = '2026-11-01';
+// The client's session date, the same way the Tasks app finds it: a date in the title,
+// then in the notes ("Session: 2026-11-08"), else the job's own due date.
+function jobSession_(t){
+  var m = String(t.title||'').match(/(\d{4}-\d{2}-\d{2})/) || String(t.notes||'').match(/(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : String(t.due || t.dueDate || '').slice(0,10);
+}
 function jobDeadline_(t){
   var due = String(t.due || t.dueDate || '').slice(0,10);
   if(!/^\d{4}-\d{2}-\d{2}$/.test(due)) return '';
@@ -4845,6 +4853,8 @@ async function perfJobs_(emp, from, to){
     if(String(t.assignedTo||'').trim().toLowerCase().split(/\s+/)[0] !== first) return;
     var done = /^(delivered|pickup)$/i.test(String(t.stage||'')) || String(t.done) === 'true' || String(t.done) === 'True';
     if(!done && String(t.archived) === 'true' || !done && String(t.archived) === 'True') return;   // dropped, not finished
+    var sess = jobSession_(t);
+    if(sess && sess < JOB_START) return;                   // session in October or earlier: not counted
     var dl = jobDeadline_(t);
     if(!dl || dl < from || dl > to) return;
     if(!done && dl >= today) return;                       // not due yet
