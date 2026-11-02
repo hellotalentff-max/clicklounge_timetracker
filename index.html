@@ -4926,14 +4926,22 @@ function incPrevMonth_(){
 function incMonthName_(ym){
   return new Date(parseInt(ym.slice(0,4),10), parseInt(ym.slice(5,7),10)-1, 1).toLocaleDateString('en-US',{month:'long'});
 }
+var INC_PROGRESS_DAY = 15;   // staff see their progress so far from the 15th
 function incReminder(){
   var box = document.getElementById('inc-reminder'), badge = document.getElementById('inc-badge');
   if(!box) return;
-  var ym = incPrevMonth_(), day = nowPHT().day;
+  var ym = incPrevMonth_(), day = nowPHT().day, cur = todayPHT().slice(0,7);
   var due = ym >= INC_START && !incInputs_(ym).done;
-  if(badge) badge.style.display = due ? '' : 'none';
-  if(!due){ box.style.display = 'none'; return; }
-  var mn = incMonthName_(ym), thisMn = incMonthName_(todayPHT().slice(0,7));
+  var progDue = cur >= INC_START && day >= INC_PROGRESS_DAY && !incInputs_(cur).progress;
+  if(badge) badge.style.display = (due || progDue) ? '' : 'none';
+  if(!due && !progDue){ box.style.display = 'none'; return; }
+  var progHtml = progDue ? '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(81,137,125,.08);border:1.5px solid var(--teal,#51897d);border-radius:12px;padding:12px 14px;margin-bottom:14px;">'+
+    '<div><div style="font-size:13px;font-weight:700;color:var(--slate);">📣 Show staff their '+esc(incMonthName_(cur))+' progress</div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:2px;">Enter the counts so far and share each person\'s incentives to date, to keep them motivated for the rest of the month.</div></div>'+
+    '<button class="btn btn-t btn-sm" onclick="incOpenMonth(\''+cur+'\')">Share progress →</button>'+
+  '</div>' : '';
+  if(!due){ box.innerHTML = progHtml; box.style.display = ''; return; }
+  var mn = incMonthName_(ym), thisMn = incMonthName_(cur);
   var when = day < INC_PAYDAY ? 'Payday is '+thisMn+' '+INC_PAYDAY+' — '+(INC_PAYDAY-day)+' day'+(INC_PAYDAY-day!==1?'s':'')+' left.'
            : day === INC_PAYDAY ? 'Payday is today.'
            : 'Payday was '+thisMn+' '+INC_PAYDAY+' — overdue.';
@@ -4941,7 +4949,7 @@ function incReminder(){
     '<div><div style="font-size:13px;font-weight:700;color:var(--slate);">💰 Enter '+esc(mn)+'\'s incentive counts</div>'+
     '<div style="font-size:11px;color:var(--muted);margin-top:2px;">Organic bookings, 5-star reviews and referrals for '+esc(mn)+'. '+when+'</div></div>'+
     '<button class="btn btn-t btn-sm" onclick="incOpenMonth(\''+ym+'\')">Enter counts →</button>'+
-  '</div>';
+  '</div>' + progHtml;
   box.style.display = '';
 }
 function incOpenMonth(ym){
@@ -4963,10 +4971,12 @@ async function incMarkDone(){
 // (getMyEvalNotes). The tag keeps these notes off the Communication Board and Self-Eval.
 var INC_NOTE_TAG = '[[INCENTIVES ';
 function isIncNote_(n){ return String((n && n.note) || '').indexOf(INC_NOTE_TAG) === 0; }
+// Profit target for a month: set per month in the Incentives tab, 40% unless changed
+function incTarget_(){ var g = parseFloat(INC_DATA && INC_DATA.inputs && INC_DATA.inputs.gate); return g > 0 ? g/100 : INC.gateMargin; }
 function incGate_(c){
   var d = INC_DATA, net = d.revenue - d.expenses;
   var owed = d.staff.reduce(function(t,s){ return t + c.people[s.name].items.reduce(function(a,i){ return a+i.amt; },0); },0);
-  var room = Math.max(0, net - INC.gateMargin*d.revenue);
+  var room = Math.max(0, net - incTarget_()*d.revenue);
   return owed > 0 ? Math.min(1, room/owed) : (room > 0 ? 1 : 0);
 }
 async function incPublish(){
@@ -4982,13 +4992,19 @@ async function incPublish(){
     var s = d.staff[k], items = c.people[s.name].items;
     var earned = items.reduce(function(a,i){ return a+i.amt; },0);
     var body = { m: ym, st: factor >= 1 ? 'on' : 'not', e: Math.round(earned*100)/100, p: Math.round(earned*factor*100)/100,
+      pr: d.range.to < d.range.monthEnd ? d.range.to : '',   // month still running: progress so far, as of this date
       i: items.map(function(i){ return [i.label, i.detail, Math.round(i.amt*100)/100]; }) };
     try{
       var r = await gas('saveEvalNote', { adminPin: ADMIN_PIN_STORED, employee: s.name, note: tag + JSON.stringify(body), createdBy: 'Incentives' });
       if(r && r.ok) ok++; else fail++;
     }catch(e){ fail++; }
   }
-  showToast((fail ? '⚠ ' : '✅ ') + incMonthName_(ym) + ' incentives published to ' + ok + ' staff' + (fail ? ', ' + fail + ' failed' : ''));
+  if(d.range.to < d.range.monthEnd && ok){
+    d.inputs.progress = d.range.to;
+    try{ localStorage.setItem('tc_inc_'+ym, JSON.stringify(d.inputs)); }catch(e){}
+    incReminder(); incRender();
+  }
+  showToast((fail ? '⚠ ' : '✅ ') + incMonthName_(ym) + (d.range.to < d.range.monthEnd ? ' progress' : ' incentives') + ' shown to ' + ok + ' staff' + (fail ? ', ' + fail + ' failed' : ''));
 }
 
 async function loadMyIncentives(){
@@ -5014,12 +5030,13 @@ async function loadMyIncentives(){
     }
     var payday = function(ym){ var y = +ym.slice(0,4), m = +ym.slice(5,7) + 1; if(m > 12){ m = 1; y++; } return incMonthName_(y+'-'+String(m).padStart(2,'0')) + ' 5'; };
     box.innerHTML = months.map(function(ym, idx){
-      var b = byMonth[ym].b, on = b.st === 'on';
+      var b = byMonth[ym].b, on = b.st === 'on', prog = !!b.pr;
+      var asOf = prog ? new Date(b.pr+'T00:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric'}) : '';
       var card =
         '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;">'+
           '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:10px;">'+
             '<div><div style="font-size:15px;font-weight:800;color:var(--slate);">'+esc(incMonthName_(ym))+' '+esc(ym.slice(0,4))+'</div>'+
-            '<div style="font-size:10px;color:var(--muted);">Payday '+esc(payday(ym))+'</div></div>'+
+            '<div style="font-size:10px;color:var(--muted);">'+(prog ? 'Progress so far, as of '+esc(asOf)+' · ' : '')+'Payday '+esc(payday(ym))+'</div></div>'+
             '<span style="padding:4px 10px;border-radius:10px;font-weight:700;font-size:11px;background:'+(on?'rgba(61,140,110,.12)':'rgba(215,144,104,.14)')+';color:'+(on?'var(--success)':'var(--gold)')+';">Studio profit goal: '+(on?'✓ On track':'Not yet')+'</span>'+
           '</div>'+
           b.i.map(function(it){
@@ -5027,9 +5044,12 @@ async function loadMyIncentives(){
               '<span>'+(it[2]?'✓ ':'· ')+esc(it[0])+'<div style="font-size:10px;color:var(--muted);">'+esc(it[1])+'</div></span>'+
               '<strong style="white-space:nowrap;">'+(it[2]?incPeso(it[2]):'—')+'</strong></div>';
           }).join('')+
-          '<div style="display:flex;justify-content:space-between;font-size:12px;padding:8px 0 0;border-top:2px solid var(--border);"><span>You earned</span><strong>'+incPeso(b.e)+'</strong></div>'+
-          '<div style="display:flex;justify-content:space-between;font-size:14px;padding-top:4px;"><span style="font-weight:700;">Your payout</span><strong style="color:'+(b.p?'var(--success)':'var(--muted)')+';">'+incPeso(b.p)+'</strong></div>'+
-          (on ? '' : '<div style="font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.5;">'+
+          '<div style="display:flex;justify-content:space-between;font-size:12px;padding:8px 0 0;border-top:2px solid var(--border);"><span>'+(prog?'Earned so far':'You earned')+'</span><strong>'+incPeso(b.e)+'</strong></div>'+
+          '<div style="display:flex;justify-content:space-between;font-size:14px;padding-top:4px;"><span style="font-weight:700;">'+(prog?'Payout if the month ended today':'Your payout')+'</span><strong style="color:'+(b.p?'var(--success)':'var(--muted)')+';">'+incPeso(b.p)+'</strong></div>'+
+          (prog ? '<div style="font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.5;">This is a mid-month check-in. '+
+              (on ? 'Keep it up: the studio is on track for its profit goal.' : 'The studio is not yet on track for its profit goal. More add-ons and bookings in the second half can still get us there.')+
+              ' Final figures come after the month ends.</div>'
+          : on ? '' : '<div style="font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.5;">'+
             (b.p ? 'The studio didn\'t fully reach its profit goal this month, so every bonus was reduced by the same share.' : 'The studio didn\'t reach its profit goal this month, so no incentives are paid. Your results still count toward your performance.')+'</div>')+
         '</div>';
       return idx === 0 ? card : '<details style="margin-bottom:10px;"><summary style="font-size:12px;cursor:pointer;color:var(--muted);">'+esc(incMonthName_(ym))+' '+esc(ym.slice(0,4))+' · '+incPeso(b.p)+'</summary>'+card+'</details>';
@@ -5191,10 +5211,11 @@ function incRender(){
   var c = incCompute_();
   // Pay in full only if the studio still keeps 40% afterwards; otherwise scale every amount down to fit.
   var owed = d.staff.reduce(function(t,s){ return t + c.people[s.name].items.reduce(function(a,i){ return a+i.amt; },0); },0);
-  var room = Math.max(0, net - INC.gateMargin*d.revenue);
+  var target = incTarget_();
+  var room = Math.max(0, net - target*d.revenue);
   var factor = owed > 0 ? Math.min(1, room/owed) : (room > 0 ? 1 : 0);
   var pass = factor > 0;
-  var gatePct = Math.round(INC.gateMargin*100);
+  var gatePct = Math.round(target*1000)/10;
   var afterMargin = d.revenue > 0 ? (net - owed*factor)/d.revenue : 0;
   var gateBadge = factor >= 1 ? '✓ Paid in full'
                : factor > 0 ? '⚠ Paid at '+Math.round(factor*100)+'% to keep '+gatePct+'%'
@@ -5213,9 +5234,12 @@ function incRender(){
     '<div style="display:flex;gap:12px;flex-wrap:wrap;">'+
       stat('Revenue', incPeso(d.revenue))+stat('Expenses', incPeso(d.expenses))+
       stat('Net income', incPeso(net), net>=0?'var(--success)':'var(--danger)')+
-      stat('Margin before incentives', Math.round(margin*1000)/10+'%', margin>=INC.gateMargin?'var(--success)':'var(--danger)')+
-      stat('Margin after incentives', Math.round(afterMargin*1000)/10+'%', afterMargin>=INC.gateMargin-0.0005?'var(--success)':'var(--danger)')+
+      stat('Margin before incentives', Math.round(margin*1000)/10+'%', margin>=target?'var(--success)':'var(--danger)')+
+      stat('Margin after incentives', Math.round(afterMargin*1000)/10+'%', afterMargin>=target-0.0005?'var(--success)':'var(--danger)')+
     '</div>'+
+    '<label style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:10px;">Profit target for '+esc(incMonthName_(d.ym))+':'+
+      '<input class="fi" type="number" min="1" max="90" step="1" style="width:70px;padding:4px 8px;" value="'+gatePct+'" onchange="incSaveInput(\'gate\',null,this.value)"> %'+
+      '<span style="color:var(--muted);">(default '+Math.round(INC.gateMargin*100)+'%)</span></label>'+
     '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Earned '+incPeso(owed)+' · room above '+gatePct+'%: '+incPeso(room)+(pass&&factor<1?' · every amount is paid at '+Math.round(factor*100)+'%':'')+'</div>'+
     (d.range.to < d.range.monthEnd ? '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Month still running — figures are up to today.</div>' : '')+
   '</div>';
@@ -5239,7 +5263,10 @@ function incRender(){
     '</tbody></table></div>'+
     '<div style="font-size:10px;color:var(--muted);margin-top:8px;">Feedback forms (from the POS): '+d.feedback+' of '+d.txnCount+' invoiced clients = <strong>'+c.fbPct+'%</strong></div>'+
     '<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px;">'+
-      (inp.done ? '<span style="font-size:11px;color:var(--success);font-weight:600;">✓ Counts entered · shown to staff</span> <button class="btn btn-outline btn-sm" onclick="incPublish()">↻ Update what staff see</button>'
+      (d.range.to < d.range.monthEnd
+        ? (inp.progress ? '<span style="font-size:11px;color:var(--success);font-weight:600;">✓ Progress shown to staff (as of '+esc(inp.progress)+')</span> ' : '')+
+          '<button class="btn '+(inp.progress?'btn-outline':'btn-t')+' btn-sm" onclick="incPublish()">📣 '+(inp.progress?'Update progress for staff':'Show progress so far to staff')+'</button>'
+        : inp.done ? '<span style="font-size:11px;color:var(--success);font-weight:600;">✓ Counts entered · shown to staff</span> <button class="btn btn-outline btn-sm" onclick="incPublish()">↻ Update what staff see</button>'
                 : '<button class="btn btn-t btn-sm" onclick="incMarkDone()">✓ Done — counts entered</button>')+
     '</div>'+
   '</div>';
@@ -5273,7 +5300,7 @@ function incRender(){
           '<span>'+(i.amt?'✓ ':'· ')+esc(i.label)+'<div style="font-size:9.5px;color:var(--muted);">'+esc(i.detail)+'</div></span>'+
           '<strong style="white-space:nowrap;">'+(i.amt?incPeso(i.amt):'—')+'</strong></div>';
       }).join('')+
-      (pass && paid > 0 ? '<button class="btn btn-sm" style="margin-top:10px;background:linear-gradient(135deg,#3d8c6e,#2f6d55);color:#fff;font-weight:700;border:none;" onclick="openPayoutModal(\''+safe+'\','+paid+',\''+d.range.from+'\',\''+d.range.monthEnd+'\')">💰 Record Incentive Payout</button>' : '')+
+      (pass && paid > 0 && d.range.to >= d.range.monthEnd ? '<button class="btn btn-sm" style="margin-top:10px;background:linear-gradient(135deg,#3d8c6e,#2f6d55);color:#fff;font-weight:700;border:none;" onclick="openPayoutModal(\''+safe+'\','+paid+',\''+d.range.from+'\',\''+d.range.monthEnd+'\')">💰 Record Incentive Payout</button>' : '')+
     '</div>';
   });
   html += '</div>';
