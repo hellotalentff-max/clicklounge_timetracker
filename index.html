@@ -660,7 +660,7 @@ button:disabled{opacity:.5;cursor:default;}
         <div class="aform-title">💰 Staff Incentives</div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
           Sales and add-ons come from the POS; attendance, lateness and OT from the time logs. The studio keeps at least 40% profit after incentives: in a tight month every bonus is cut by the same share, and below 40% nothing is paid.
-          Add-ons pay 10%: Photographer, Photo Edit (5) and the Acrylic Frame with Gold Studs split 25% seller / 50% the one who did it / 25% fund. Any other add-on a staff member offered puts its 10% in the fund; one the client asked for on their own pays nothing. Referral / repeat bookings add ₱75 each, and the ₱900 team bonus is earned when organic bookings are up 50% on last month and every client filled in a feedback form. Each day's add-on money is shared by whoever was clocked in that day; the rest is shared by days worked. Digital copies don't count.
+          Add-ons pay 10%: Photographer, Photo Edit (5) and the Acrylic Frame with Gold Studs split 25% seller / 50% the one who did it / 25% fund. Any other add-on a staff member offered puts its 10% in the fund; one the client asked for on their own pays nothing. Referral / repeat bookings add ₱75 each, and the ₱900 team bonus is earned when organic bookings are up 50% on last month and every client filled in a feedback form. Each day's add-on money is shared by whoever was clocked in that day; the rest is shared by days worked.
         </div>
         <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
           <div class="fg" style="margin:0;"><label class="fl">Month</label><input class="fi" type="month" id="inc-month"></div>
@@ -4954,7 +4954,7 @@ var INC = {
 var INC_DATA = null;
 
 // Same rules as the POS invoice screen
-function incIsCommission_(i){ return !/digital/i.test(i.name) && (i.isAddon || /frame|print|8R|A4/i.test(i.name)); }
+function incIsCommission_(i){ return i.isAddon || /frame|print|8R|A4/i.test(i.name); }
 function incIsSplit_(i){ return /^(photographer|photo edit \(5\)|acrylic frame w\/ gold studs \(8x24\))$/i.test(String(i.name||'').trim()); }
 var INC_CLIENT_ASKED = '__client__';   // POS "Sold by: Client asked"
 
