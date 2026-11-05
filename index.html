@@ -4949,12 +4949,56 @@ var INC = {
   // Team bonus into the fund: organic bookings up 50% on last month AND a feedback form from every client
   teamBonus: 900, organicGrowth: 0.5, feedbackPct: 100,
   organicBaseline: { '2026-10': 26 },            // months counted before this tab kept them
-  referral: 75, referralCap: 750                 // team: each referral / repeat booking, into the fund
+  referral: 75, referralCap: 750,                // team: each referral / repeat booking, into the fund
+  lateFee: 200, lateGraceMin: 15,                // client late over 15 min and no Late Fee invoiced → off that day's fund
+  lateFeeStart: '2026-11-06'                     // late arrivals before this date are not deducted
 };
 var INC_DATA = null;
 
 // Same rules as the POS invoice screen
-function incIsCommission_(i){ return i.isAddon || /frame|print|8R|A4/i.test(i.name); }
+function incIsLateFee_(i){ return /^late ?fee\b/i.test(String((i&&i.name)||'').trim()); }
+function incIsCommission_(i){ return !incIsLateFee_(i) && (i.isAddon || /frame|print|8R|A4/i.test(i.name)); }
+// Clock time → minutes after midnight. Accepts "1:10 PM" / "03:18 PM" or a full date-time string (read in PH time).
+function incClockMin_(t){
+  var str = String(t||'');
+  if(/^\d{4}-\d{2}-\d{2}T/.test(str)){ var dt = new Date(str); if(!isNaN(dt)) str = dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true,timeZone:'Asia/Manila'}); }
+  var m = str.match(/(?:^|\D)(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)/i);
+  if(!m) return null;
+  var h = parseInt(m[1],10), mi = parseInt(m[2],10);
+  if(/PM/i.test(m[3]) && h < 12) h += 12;
+  if(/AM/i.test(m[3]) && h === 12) h = 0;
+  return h*60 + mi;
+}
+function incSameName_(a, b){
+  var tok = function(x){ return String(x||'').toLowerCase().replace(/[^a-z ]/g,' ').split(/\s+/).filter(Boolean); };
+  var ta = tok(a), tb = tok(b); if(!ta.length || !tb.length) return false;
+  var hit = ta.filter(function(t){ return tb.indexOf(t) !== -1; }).length;
+  return hit / Math.min(ta.length, tb.length) >= 0.8;
+}
+// Same rule as the POS: a booked client checking in more than 15 min after their slot owes a Late Fee.
+// It counts as invoiced when that client's invoice (check-in day to 3 days after) has a Late Fee line.
+function incLateArrivals_(pos, ym){
+  var acks = {}; (pos.acknowledgements||[]).forEach(function(a){ acks[a.id] = a; });
+  var txns = (pos.transactions||[]).filter(function(t){ return !String(t.invoiceNum||'').startsWith('[VOID]'); });
+  var gap = function(a, b){ return (Date.parse(a+'T00:00:00Z') - Date.parse(b+'T00:00:00Z'))/86400000; };
+  var out = [];
+  (pos.registrations||[]).forEach(function(r){
+    var rd = String(r.date||'').slice(0,10);
+    if(rd.slice(0,7) !== ym || r.arrType !== 'booked' || !acks[r.ackId]) return;
+    var a = acks[r.ackId];
+    if(String(a.bookDate||'').slice(0,10) !== rd) return;
+    var sm = incClockMin_(a.timeSlot), tm = incClockMin_(r.time);
+    if(sm == null || tm == null || tm - sm <= INC.lateGraceMin) return;
+    var paid = txns.some(function(t){
+      var td = String(t.date||'').slice(0,10), g = gap(td, rd);
+      if(g < 0 || g > 3 || !incSameName_(t.clientName, r.fbName)) return false;
+      var items = []; try{ items = Array.isArray(t.items) ? t.items : JSON.parse(t.items||'[]'); }catch(e){}
+      return items.some(incIsLateFee_);
+    });
+    out.push({ date: rd, client: r.fbName||'', slot: a.timeSlot, mins: tm - sm, invoiced: paid });
+  });
+  return out;
+}
 function incIsSplit_(i){ return /^(photographer|photo edit \(5\)|acrylic frame w\/ gold studs \(8x24\))$/i.test(String(i.name||'').trim()); }
 var INC_CLIENT_ASKED = '__client__';   // POS "Sold by: Client asked"
 
@@ -5191,6 +5235,8 @@ async function incGenerate(){
       });
     });
 
+    var lateArr = incLateArrivals_(pos, ym);
+
     var staff = incStaff_();
     var perf = {}, days = {};
     for(var k=0; k<staff.length; k++){
@@ -5203,7 +5249,7 @@ async function incGenerate(){
     }
 
     INC_DATA = { ym: ym, range: rg, revenue: revenue, expenses: expenses, txnCount: txns.length,
-      feedback: feedback, lines: lines, staff: staff, perf: perf, days: days, inputs: incInputs_(ym) };
+      feedback: feedback, lines: lines, late: lateArr, staff: staff, perf: perf, days: days, inputs: incInputs_(ym) };
     incRender();
   }catch(e){
     out.innerHTML = '<div style="color:var(--danger);padding:14px;font-size:12px;border:1px solid var(--danger);border-radius:8px;background:rgba(192,84,74,.05);">❌ '+esc(e.message)+'</div>';
@@ -5240,6 +5286,13 @@ function incCompute_(){
     if(l.doneBy && people[l.doneBy]) add(l.doneBy, 'Did '+l.name, l.client+' · '+l.date, doer); else { toFund(l, doer); unassigned++; }
   });
   fund.push({ label: 'Add-on commission (10%)', detail: staffSold+' sold by staff'+(clientAsked?' · '+clientAsked+' client-asked or not picked (no commission)':''), amt: addonFund });
+
+  // Late Fees not invoiced: each one takes ₱200 off the fund of the day the client came in late
+  var late = (d.late || []).filter(function(x){ return x.date >= INC.lateFeeStart; }), lateMissed = late.filter(function(x){ return !x.invoiced; }), lateOff = 0;
+  lateMissed.forEach(function(x){ toFund(x, -INC.lateFee); lateOff += INC.lateFee; });
+  addonFund += lateOff;   // toFund already took it off; keep addonFund as the add-on commission alone
+  if(late.length) fund.push({ label: 'Late Fees not invoiced', detail: late.length+' late client'+(late.length!==1?'s':'')+' · '+(late.length-lateMissed.length)+' invoiced · '+lateMissed.length+' not invoiced × −'+incPeso(INC.lateFee)+
+    (lateMissed.length ? ' ('+lateMissed.map(function(x){ return x.client+' '+x.date.slice(5); }).join(', ')+')' : ''), amt: -lateOff });
 
   var teamReviews = parseFloat(inp.teamReviews)||0, allReviews = parseFloat(inp.allReviews)||0;
   var revPct = allReviews > 0 ? Math.floor(Math.min(teamReviews, allReviews) / allReviews * 100) : 0;
@@ -5281,7 +5334,7 @@ function incCompute_(){
   var fundTotal = fund.reduce(function(t,f){ return t+f.amt; },0);
   var worked = function(name){ return Object.keys((d.days||{})[name]||{}).length; };
   var shares = {}; d.staff.forEach(function(s){ shares[s.name] = { days: worked(s.name), fromDays: 0, fromPool: 0 }; });
-  var pool = fundTotal - addonFund, noOneIn = 0;
+  var pool = fundTotal - addonFund + lateOff, noOneIn = 0;   // late deductions sit in dayFund, not the pool
   Object.keys(dayFund).forEach(function(dt){
     var who = d.staff.filter(function(s){ return ((d.days||{})[s.name]||{})[dt]; });
     if(!who.length){ pool += dayFund[dt]; noOneIn += dayFund[dt]; return; }
@@ -5291,7 +5344,7 @@ function incCompute_(){
   d.staff.forEach(function(s){
     var sh = shares[s.name];
     sh.fromPool = totalDays ? pool * sh.days / totalDays : 0;
-    sh.total = sh.fromDays + sh.fromPool;
+    sh.total = Math.max(0, sh.fromDays + sh.fromPool);   // a fund share never goes below zero
     add(s.name, 'Incentive fund share', sh.days+' day'+(sh.days!==1?'s':'')+' clocked in · '+incPeso(sh.fromDays)+' from add-ons sold on those days + '+incPeso(sh.fromPool)+' of the monthly pool', sh.total);
   });
   return { people: people, fund: fund, fundTotal: fundTotal, shares: shares, pool: pool, noOneIn: noOneIn, unassigned: unassigned, fbPct: fbPct };
@@ -5372,9 +5425,9 @@ function incRender(){
   html += '<div style="'+card+'">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div style="font-size:13px;font-weight:700;color:var(--slate);">🤝 Incentive fund</div>'+
     '<div style="font-size:12px;"><strong>'+incPeso(c.fundTotal)+'</strong> <span style="color:var(--muted);">→ shared by days clocked in</span></div></div>'+
-    c.fund.map(function(f){ return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-top:1px solid var(--border);"><span>'+esc(f.label)+' <span style="color:var(--muted);font-size:10px;">'+esc(f.detail)+'</span></span><strong>'+incPeso(f.amt)+'</strong></div>'; }).join('')+
+    c.fund.map(function(f){ return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-top:1px solid var(--border);"><span>'+esc(f.label)+' <span style="color:var(--muted);font-size:10px;">'+esc(f.detail)+'</span></span><strong'+(f.amt<0?' style="color:var(--danger);"':'')+'>'+(f.amt<0?'−'+incPeso(-f.amt):incPeso(f.amt))+'</strong></div>'; }).join('')+
     (c.unassigned ? '<div style="font-size:10px;color:var(--gold);margin-top:6px;">⚠ '+c.unassigned+' Photographer / Photo Edit / Acrylic Frame share'+(c.unassigned!==1?'s':'')+' had no "Sold by" or "Done by" in the POS, so '+(c.unassigned!==1?'they went':'it went')+' to the fund.</div>' : '')+
-    '<div style="font-size:10.5px;color:var(--muted);margin:10px 0 4px;">Each day\'s add-on money goes, in equal parts, to whoever was clocked in that day. The team bonus, referral / repeat bookings'+(c.noOneIn?', and '+incPeso(c.noOneIn)+' from days nobody clocked in,':'')+' make up the monthly pool ('+incPeso(c.pool)+'), shared by days worked.</div>'+
+    '<div style="font-size:10.5px;color:var(--muted);margin:10px 0 4px;">Each day\'s add-on money goes, in equal parts, to whoever was clocked in that day; a Late Fee that wasn\'t invoiced takes ₱'+INC.lateFee+' off that day. The team bonus, referral / repeat bookings'+(c.noOneIn?', and '+incPeso(c.noOneIn)+' from days nobody clocked in,':'')+' make up the monthly pool ('+incPeso(c.pool)+'), shared by days worked.</div>'+
     d.staff.map(function(s){ var sh = c.shares[s.name];
       return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-top:1px dashed var(--border);"><span>'+esc(s.name)+' <span style="color:var(--muted);font-size:10px;">'+sh.days+' day'+(sh.days!==1?'s':'')+' · '+incPeso(sh.fromDays)+' + '+incPeso(sh.fromPool)+'</span></span><strong>'+incPeso(sh.total)+'</strong></div>';
     }).join('')+
