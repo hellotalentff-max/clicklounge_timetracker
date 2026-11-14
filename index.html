@@ -1111,7 +1111,9 @@ var ADMIN_DATA = {};
 // cross-system lookups (e.g. early-call reminders from tomorrow's bookings).
 // Not user-configurable since it's a hardcoded integration point, unlike GAS_URL.
 var POS_GAS_URL = 'https://script.google.com/macros/s/AKfycbx_Y5nH34Rq16JJ2AxBDr30ttmDFuic61OqoC0u3Wq0zogHEhfoV6qE7uiNagI43flVgw/exec';
-function posGas(action, payload){ return gasCallTo_(POS_GAS_URL, action, payload); }
+function posGas(action, payload){ return gasCallTo_(POS_GAS_URL, action, payload, true); }
+// Staff key for the POS script's gate, typed once per device in the POS (Settings → Staff key).
+function gateKey_(){ try{ return localStorage.getItem('cl_gate_key')||''; }catch(e){ return ''; } }
 
 async function gas(action, payload){
   var url = GAS_URL || localStorage.getItem('tc_gas_url') || '';
@@ -1119,8 +1121,10 @@ async function gas(action, payload){
   return gasCallTo_(url, action, payload);
 }
 
-function gasCallTo_(url, action, payload){
-  var b = btoa(unescape(encodeURIComponent(JSON.stringify({action:action, payload:payload||{}}))));
+function gasCallTo_(url, action, payload, withKey){
+  var req = {action:action, payload:payload||{}};
+  if(withKey) req.key = gateKey_();
+  var b = btoa(unescape(encodeURIComponent(JSON.stringify(req))));
   var u = url + '?d=' + encodeURIComponent(b) + '&action=' + encodeURIComponent(action);
   // Send EVERY payload field as a URL param too — guarantees data arrives even if base64 decode fails
   if(payload){
@@ -1209,9 +1213,15 @@ async function adminLogin(){
   
   pin = String(pin).trim();
   
-  // Simple, bulletproof: 5678 always lets you into setup mode
-  // No matter what state the system is in
-  if(pin === '5678' || pin === (localStorage.getItem('tc_admin_pin')||'5678')){
+  // The script checks the PIN (no master PIN). With no script linked yet, the admin view
+  // opens empty so Settings can be filled in; it holds no data until a real PIN is accepted.
+  var check = null;
+  if(GAS_URL){
+    try{ check = await gas('getAdminData', {adminPin:pin}); }
+    catch(e){ showToast('⚠ Could not reach TimeCommand: '+e.message); return; }
+    if(!check || !check.ok){ showToast('❌ '+((check && check.error) || 'Incorrect PIN')); return; }
+  }
+  {
     try {
       ADMIN_PIN_STORED = pin;
       IS_ADMIN = true;
@@ -1220,17 +1230,12 @@ async function adminLogin(){
       setTimeout(function(){ try { aTab('set'); } catch(e) {} }, 250);
       showToast('👋 Admin access granted');
 
-      // If GAS URL is set, try to load real data in the background
-      if(GAS_URL){
-        gas('getAdminData', {adminPin:pin}).then(function(r){
-          if(r && r.ok){
-            ADMIN_DATA = r;
-            renderAdminDash();
-            autoApproveEligibleOT().then(function(changed){
-              if(changed) refreshAdminData();
-            });
-          }
-        }).catch(function(){});
+      if(check){
+        ADMIN_DATA = check;
+        renderAdminDash();
+        autoApproveEligibleOT().then(function(changed){
+          if(changed) refreshAdminData();
+        });
       }
       return;
     } catch(err) {
@@ -1241,8 +1246,6 @@ async function adminLogin(){
       return;
     }
   }
-
-  showToast('❌ Incorrect PIN');
 }
 
 // ════════════════════════════════════════
@@ -3771,7 +3774,8 @@ function openEmpModal(name){
     document.getElementById('ef-tier').value        = s.tier || '';
     document.getElementById('ef-type').value        = s.type || 'full-time';
     document.getElementById('ef-status').value      = s.status || 'active';
-    document.getElementById('ef-pin').value         = s.pin || '';
+    document.getElementById('ef-pin').value         = '';
+    document.getElementById('ef-pin').placeholder   = s.hasPin===false ? 'No PIN yet: set 4 digits' : 'Leave blank to keep current PIN';
     document.getElementById('ef-rate').value        = s.rate || '';
     document.getElementById('ef-email').value       = s.email || '';
     document.getElementById('ef-phone').value       = s.phone || '';
@@ -3906,9 +3910,9 @@ async function saveEmployee(){
   var pin  = String(document.getElementById('ef-pin').value).trim();
   var rate = document.getElementById('ef-rate').value;
   if(!name){ showToast('Name is required.'); empMTab('basic'); return; }
+  if(pin && !/^\d{4}$/.test(pin)){ showToast('PIN must be exactly 4 digits.'); empMTab('basic'); return; }
   if(!editName){ // adding new
     if(!pin){ showToast('PIN is required.'); empMTab('basic'); return; }
-    if(!/^\d{4}$/.test(pin)){ showToast('PIN must be exactly 4 digits.'); empMTab('basic'); return; }
     if(!rate){ showToast('Hourly rate is required.'); empMTab('basic'); return; }
   }
   var payload = {
@@ -3950,6 +3954,7 @@ async function saveEmployee(){
   };
   showToast('Saving…');
   try{
+    if(editName && !pin) delete payload.pin;   // blank = keep the current PIN
     var r = editName ? await gas('updateEmployee', payload) : await gas('addEmployee', payload);
     if(!r.ok) throw new Error(r.error);
     showToast('✅ '+r.message);
@@ -4214,7 +4219,7 @@ function resetTracker(){
   localStorage.removeItem('tc_gas_url');
   localStorage.removeItem('tc_admin_pin');
   GAS_URL = '';
-  alert('✅ Settings cleared. Reload the page and use admin PIN 5678.');
+  alert('✅ Settings cleared. Reload the page, then enter the script URL in Admin → Settings.');
   location.reload();
 }
 function showToast(msg){
@@ -4353,6 +4358,8 @@ async function stopTaskSession(){
   var durationMs = endTime - _taskSession.startTime;
   var durationMin = Math.round(durationMs / 60000 * 100) / 100; // 2dp precision
   var session = {
+    name: CURR_USER.name,
+    pin: CURR_PIN,
     employee: CURR_USER.name,
     task: _taskSession.name,
     startedAt: _taskSession.startedDisplay,
@@ -4407,7 +4414,7 @@ async function loadTaskSessions(){
   }
   listEl.innerHTML = '<div style="text-align:center;padding:16px;font-size:11px;color:var(--muted);">Loading…</div>';
   try{
-    var r = await gas('getTaskSessions', { employee: CURR_USER.name, date: todayPHT() });
+    var r = await gas('getTaskSessions', { name: CURR_USER.name, pin: CURR_PIN, employee: CURR_USER.name, date: todayPHT() });
     if(!r.ok) throw new Error(r.error || 'Failed');
     var sessions = r.sessions || [];
     if(!sessions.length){
