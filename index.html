@@ -1111,7 +1111,8 @@ var ADMIN_DATA = {};
 // cross-system lookups (e.g. early-call reminders from tomorrow's bookings).
 // Not user-configurable since it's a hardcoded integration point, unlike GAS_URL.
 var POS_GAS_URL = 'https://script.google.com/macros/s/AKfycbx_Y5nH34Rq16JJ2AxBDr30ttmDFuic61OqoC0u3Wq0zogHEhfoV6qE7uiNagI43flVgw/exec';
-function posGas(action, payload){ return gasCallTo_(POS_GAS_URL, action, payload, true); }
+// The POS data (getAll) is ~1.6 MB and takes 30-50 s, so POS calls get 2 minutes instead of 25 s.
+function posGas(action, payload){ return gasCallTo_(POS_GAS_URL, action, payload, true, 120000); }
 // Staff key for the POS script's gate, typed once per device in the POS (Settings → Staff key).
 function gateKey_(){ try{ return localStorage.getItem('cl_gate_key')||''; }catch(e){ return ''; } }
 
@@ -1121,7 +1122,7 @@ async function gas(action, payload){
   return gasCallTo_(url, action, payload);
 }
 
-function gasCallTo_(url, action, payload, withKey){
+function gasCallTo_(url, action, payload, withKey, timeoutMs){
   var req = {action:action, payload:payload||{}};
   if(withKey) req.key = gateKey_();
   var b = btoa(unescape(encodeURIComponent(JSON.stringify(req))));
@@ -1144,8 +1145,8 @@ function gasCallTo_(url, action, payload, withKey){
     var tm  = setTimeout(function(){
       delete window[cb];
       var el = document.getElementById(sid); if(el) el.remove();
-      rej(new Error('Request timed out — check GAS URL and that the deployment is set to "Anyone can access"'));
-    }, 25000);
+      rej(new Error(timeoutMs ? 'The POS took too long to answer. Please try again.' : 'Request timed out — check GAS URL and that the deployment is set to "Anyone can access"'));
+    }, timeoutMs || 25000);
     window[cb] = function(d){
       clearTimeout(tm); delete window[cb];
       var el = document.getElementById(sid); if(el) el.remove();
@@ -5206,7 +5207,7 @@ async function incGenerate(){
   if(!ym){ showToast('⚠ Pick a month'); return; }
   var rg = incMonthRange_(ym);
   if(rg.to < rg.from){ showToast('⚠ That month hasn\'t started yet'); return; }
-  out.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;">💰 Pulling sales from the POS and attendance from time logs…</div>';
+  out.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;">💰 Pulling sales from the POS and attendance from time logs… this can take up to a minute.</div>';
   try{
     var res = await Promise.all([
       posGas('getAll', {}),
